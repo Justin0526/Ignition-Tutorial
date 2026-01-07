@@ -8,3 +8,12 @@ export async function topEnquiryCategories(req: any, res: any){
         return res.status(500).json({ error: err.message ?? "Server error" })
     }
 }
+
+export async function topEscalatedEnquiries(req: any, res: any){
+    try{
+        const data = await svc.getTop5EscalatedEnquiries()
+        return res.json(data)
+    }catch(err: any){
+        return res.status(500).json({ error: err.message ?? "Server error" })
+    }
+}
