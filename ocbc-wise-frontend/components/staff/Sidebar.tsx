@@ -1,5 +1,7 @@
+"use client"
 import Link from "next/link"
 import Image from "next/image"
+import { usePathname } from "next/navigation"
 
 type NavItem = {
   label: string
@@ -7,11 +9,12 @@ type NavItem = {
   active?: boolean
 }
 
-export default function Sidebar({ activeHref }: { activeHref: string }) {
+export default function Sidebar() {
+  const pathname = usePathname()
   const items: NavItem[] = [
-    { label: "📊 Insights & Pulse", href: "/insights" },
+    { label: "📊 Insights & Pulse", href: "/staff/insights" },
     { label: "📚 Tutorial Library", href: "/tutorial-library" },
-    { label: "📱 App Screens", href: "/app-screens" },
+    { label: "📱 App Screens", href: "/staff/app-screens" },
     { label: "➕ New Tutorial", href: "/new-tutorial" },
   ]
 
@@ -42,7 +45,7 @@ export default function Sidebar({ activeHref }: { activeHref: string }) {
       <nav className="flex-1 overflow-y-auto px-4 py-2">
         <ul className="space-y-2">
           {items.map((it) => {
-            const active = it.href === activeHref
+            const active = pathname.startsWith(it.href)
             return (
               <li key={it.href}>
                 <Link

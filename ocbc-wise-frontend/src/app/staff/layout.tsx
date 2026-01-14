@@ -3,7 +3,7 @@ import Sidebar from "@/components/staff/Sidebar"
 export default function StaffLayout({ children }: { children: React.ReactNode }) {
   return (
     <div className="min-h-screen bg-slate-50">
-      <Sidebar activeHref="/insights" />
+      <Sidebar />
 
       {/* Main area accounts for sidebar width on lg+ */}
       <main className="min-h-screen lg:ml-72">
