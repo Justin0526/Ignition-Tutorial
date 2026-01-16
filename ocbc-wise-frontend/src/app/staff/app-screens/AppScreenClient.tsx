@@ -48,15 +48,24 @@ export default function AppScreensClient({
       {/* Grid */}
       <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
         {screens.map((screen) => (
-          <div
+            <div
             key={screen.screen_asset_id}
-            className="rounded-xl border bg-white"
-          >
-            <div className="aspect-[9/16] bg-slate-100" />
-            <div className="p-4">
-              <p className="font-medium">{screen.name}</p>
+            className="overflow-hidden rounded-xl border bg-white shadow-sm"
+            >
+            <div className="aspect-[9/16] bg-slate-100">
+                <img
+                src={screen.public_url}
+                alt={screen.name}
+                className="h-full w-full object-cover"
+                />
             </div>
-          </div>
+
+            <div className="p-4">
+                <p className="font-medium text-slate-900">
+                {screen.name}
+                </p>
+            </div>
+            </div>
         ))}
       </div>
     </div>

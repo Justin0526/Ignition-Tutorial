@@ -2,26 +2,41 @@ import { supabase } from "../lib/supabase.js"
 import { imageSize } from "image-size";
 import crypto from "crypto";
 
+const SUPABASE_URL = process.env.SUPABASE_URL
+
 type CreateScreenAssetInput = {
     name: string;
     fileBuffer: Buffer;
     originalName: string;
     mimeType: string;
 }
-export async function getAllScreenAssets(){
+export async function getAllScreenAssets() {
+    if (!SUPABASE_URL) {
+        throw new Error("SUPABASE_URL is not configured")
+    }
+
     const { data, error } = await supabase
         .from("screen_asset")
-        .select("screen_asset_id, name, type, bucket, object_path, content_width, content_height, created_at")
+        .select(
+        "screen_asset_id, name, type, bucket, object_path, content_width, content_height, created_at"
+        )
 
-        if (error) throw new Error(error.message)
-            return data
+    if (error) throw new Error(error.message)
+    if (!data) return []
+
+    return data.map((row) => ({
+        ...row,
+        public_url: `${SUPABASE_URL}/storage/v1/object/public/${row.bucket}/${row.object_path}`,
+    }))
 }
+
 
 export async function createScreenAsset(input: CreateScreenAssetInput){
     // 1) Validate file type
-    if (input.mimeType !== "image/png"){
-        throw new Error("Only PNG files are allowed");
+    if (!["image/png", "image/jpeg"].includes(input.mimeType)) {
+        throw new Error("Only PNG and JPG images are allowed");
     }
+
 
     // 2) Read image dimensions (width/height)
     const dim = imageSize(input.fileBuffer);
@@ -44,7 +59,7 @@ export async function createScreenAsset(input: CreateScreenAssetInput){
     const { error: uploadError } = await supabase.storage
         .from(bucket)
         .upload(object_path, input.fileBuffer, {
-            contentType: "image/png",
+            contentType: input.mimeType,
             upsert: false,
         });
     
@@ -63,7 +78,7 @@ export async function createScreenAsset(input: CreateScreenAssetInput){
                 content_height: height,
             }
         ])
-        .select("screen_asset_id, name, type, bucket, object_path, content_wdth, content_height, created_at")
+        .select("screen_asset_id, name, type, bucket, object_path, content_width, content_height, created_at")
         .single();
 
     if (dbError) throw new Error(dbError.message);

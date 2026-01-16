@@ -22,6 +22,7 @@ export type ScreenAsset = {
     content_width: number
     content_height: number
     created_at: string
+    public_url: string
 }
 
 export async function getScreenAssets(): Promise<ScreenAsset[]>{
@@ -44,8 +45,9 @@ export async function createScreenAsset(input: CreateScreenAssetInput):Promise<S
         body: formData,
     })
 
-    if (!res.ok){
-        throw new Error(`API error ${res.status}`)
+    if (!res.ok) {
+        const errorBody = await res.json()
+        throw new Error(errorBody.error || `API error ${res.status}`)
     }
 
     return res.json()
