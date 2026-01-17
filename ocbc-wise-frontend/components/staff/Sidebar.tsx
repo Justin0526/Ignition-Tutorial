@@ -15,7 +15,7 @@ export default function Sidebar() {
     { label: "📊 Insights & Pulse", href: "/staff/insights" },
     { label: "📚 Tutorial Library", href: "/tutorial-library" },
     { label: "📱 App Screens", href: "/staff/app-screens" },
-    { label: "➕ New Tutorial", href: "/new-tutorial" },
+    { label: "➕ New Tutorial", href: "/staff/tutorials/new" },
   ]
 
   return (

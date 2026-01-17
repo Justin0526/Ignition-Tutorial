@@ -1,4 +1,4 @@
-const BASE = process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\$/, "") || "http//localhost:5001"
+const BASE = process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/$/, "") || "http://localhost:5001"
 
 async function fetchJSON<T>(path: string, options?: RequestInit): Promise<T>{
     const res = await fetch(`${BASE}${path}`, {
