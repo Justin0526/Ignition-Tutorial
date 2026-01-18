@@ -8,6 +8,7 @@ import type { ScreenAsset } from "@/lib/api/screenAssets"
 import type { NavBarAsset } from "@/lib/api/screenAssets"
 import { getNavBarAssets } from "@/lib/api/screenAssets"
 import { upsertTutorialStep } from "@/lib/api/tutorialSteps"
+import { getTutorialSteps } from "@/lib/api/tutorialSteps"
 
 type StepTarget = {
   x: number // 0..1 (top-left of target box)
@@ -17,10 +18,20 @@ type StepTarget = {
   isNav: boolean
 }
 
+type StepDraft = {
+  instruction: string
+  tip: string
+  actionType: ActionType
+  scrollProgress: number
+  nav_key: string
+  screen: ScreenAsset | null
+}
+
 type Step = {
   id: string
   title: string
-  target?: StepTarget
+  target?: StepTarget | null
+  draft: StepDraft
 }
 
 type ActionType = "direct_tap" | "scroll_then_tap" | "no_tap"
@@ -133,13 +144,95 @@ export default function StepsBuilderClient() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [actionType, activeIndex])
 
+  useEffect(() => {
+    if (!hasSteps) return
+    const step = steps[activeIndex]
+    if (!step) return
+    loadStepToForm(step)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeIndex])
+
+  useEffect(() => {
+    if (!tutorialVersionId) return
+
+    ;(async () => {
+      try {
+        const { steps: rows } = await getTutorialSteps(tutorialVersionId)
+
+        const hydrated: Step[] = rows.map((r) => {
+          const hasTarget =
+            r.target_x != null &&
+            r.target_y != null &&
+            r.target_w != null &&
+            r.target_h != null
+
+          const actionType: ActionType = !hasTarget
+            ? "no_tap"
+            : r.scroll_progress > 0
+              ? "scroll_then_tap"
+              : "direct_tap"
+
+          const screen: ScreenAsset | null =
+            r.screen_public_url && r.screen_name
+              ? ({
+                  screen_asset_id: r.screen_asset_id,
+                  name: r.screen_name,
+                  public_url: r.screen_public_url,
+                } as ScreenAsset)
+              : null
+
+          return {
+            id: r.tutorial_step_id,
+            title: r.instruction?.trim() ? r.instruction.trim() : "(Untitled Step)",
+            target: hasTarget
+              ? {
+                  x: r.target_x!,
+                  y: r.target_y!,
+                  w: r.target_w!,
+                  h: r.target_h!,
+                  isNav: r.is_nav_target ?? false,
+                }
+              : null,
+            draft: {
+              instruction: r.instruction ?? "",
+              tip: r.tip ?? "",
+              actionType,
+              scrollProgress: r.scroll_progress ?? 0,
+              nav_key: r.nav_key ?? "",
+              screen,
+            },
+          }
+        })
+
+        setSteps(hydrated)
+        setActiveIndex(0)
+
+        // load first step into the form
+        if (hydrated[0]) loadStepToForm(hydrated[0])
+      } catch (e) {
+        // optional: console.error(e)
+      }
+    })()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tutorialVersionId])
+
 
   function handleAddStep() {
     const nextIndex = steps.length + 1
     const newStep: Step = {
       id: crypto.randomUUID(),
       title: "(Untitled Step)",
+      target: null,
+      draft: {
+        instruction: "",
+        tip: "",
+        actionType: "direct_tap",
+        scrollProgress: 0,
+        nav_key: "",
+        screen: null,
+      },
     }
+
     setSteps((prev) => [...prev, newStep])
     setActiveIndex(nextIndex - 1)
 
@@ -186,6 +279,44 @@ export default function StepsBuilderClient() {
           ? { ...s, target: { x, y, w, h, isNav } }
           : s
       )
+    )
+  }
+
+  function persistActiveFormToStep() {
+    if (!hasSteps) return
+
+    setSteps((prev) =>
+      prev.map((s, idx) =>
+        idx === activeIndex
+          ? {
+              ...s,
+              title: instruction.trim() ? instruction.trim() : s.title,
+              target: activeTarget ?? s.target ?? null,
+              draft: {
+                instruction,
+                tip,
+                actionType,
+                scrollProgress,
+                nav_key: selectedNavKey,
+                screen: selectedScreen,
+              },
+            }
+          : s
+      )
+    )
+  }
+
+  function loadStepToForm(step: Step) {
+    setInstruction(step.draft.instruction ?? "")
+    setTip(step.draft.tip ?? "")
+    setActionType(step.draft.actionType ?? "direct_tap")
+    setScrollProgress(step.draft.scrollProgress ?? 0)
+    setSelectedNavKey(step.draft.nav_key ?? "")
+    setSelectedScreen(step.draft.screen ?? null)
+
+    // restore target overlay too
+    setSteps((prev) =>
+      prev.map((s) => (s.id === step.id ? { ...s, target: step.target ?? null } : s))
     )
   }
 
@@ -295,7 +426,10 @@ export default function StepsBuilderClient() {
                               <button
                                 key={s.id}
                                 type="button"
-                                onClick={() => setActiveIndex(idx)}
+                                onClick={() => {
+                                  persistActiveFormToStep()
+                                  setActiveIndex(idx)
+                                }}
                                 className={[
                                   "w-full rounded-2xl px-4 py-4 text-left transition",
                                   isActive
