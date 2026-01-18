@@ -2,7 +2,7 @@
 
 import { useState } from "react"
 import { ScreenAsset } from "@/types/screenAsset"
-import RegisterScreenModal from "@/components/staff/RegisterScreenModal"
+import RegisterScreenModal from "@/components/RegisterScreenModal"
 
 export default function AppScreensClient({
   screens,

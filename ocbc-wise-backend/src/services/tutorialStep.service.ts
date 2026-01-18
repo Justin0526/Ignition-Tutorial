@@ -13,7 +13,6 @@ export type CreateStepInput = {
     language_code?: string;
     instruction: string;
     tip?: string | null;
-    text_status: "draft" | "approved";
 }
 
 type TutorialStepRow = {
@@ -35,7 +34,6 @@ type TutorialStepTextRow = {
     language_code: string;
     instruction: string
     tip: string | null;
-    status: "draft" | "approved";
     created_at: string;
 }
 
@@ -64,7 +62,6 @@ async function insertTutorialStep(input: CreateStepInput) : Promise<TutorialStep
 
 async function insertTutorialStepText(input: CreateStepInput & { tutorial_step_id: string}) : Promise<TutorialStepTextRow> {
     const language_code = input.language_code ?? "en-SG";
-    const status = input.text_status ?? "draft";
 
     const { data, error } = await supabase
         .from("tutorial_step_text")
@@ -74,10 +71,9 @@ async function insertTutorialStepText(input: CreateStepInput & { tutorial_step_i
                 language_code,
                 instruction: input.instruction,
                 tip: input.tip ?? null,
-                status,
             },
         ])
-        .select("tutorial_step_text_id, tutorial_step_id, language_code, instruction, tip, status, created_at")
+        .select("tutorial_step_text_id, tutorial_step_id, language_code, instruction, tip, created_at")
         .single();
     
     if (error) throw error;
@@ -94,6 +90,7 @@ export async function createTutorialStepWithText(input: CreateStepInput){
         return { step, text };
     } catch (err){
         await supabase.from("tutorial_step").delete().eq("tutorial_step_id", step.tutorial_step_id);
+        throw err;
     }
 }
 
@@ -117,7 +114,6 @@ type StepWithTextRow = {
         language_code: string;
         instruction: string;
         tip: string | null;
-        status: "draft" | "approved";
         created_at: string;
     }>;
 };
@@ -142,7 +138,6 @@ export async function getStepsByTutorialVersion(params: {tutorial_version_id: st
                 language_code,
                 instruction,
                 tip,
-                status,
                 created_at
             )
             `

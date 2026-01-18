@@ -1,7 +1,7 @@
 "use client"
 
 import { useMemo, useState } from "react"
-import TutorialBuilderSteps from "@/components/staff/TutorialBuilderSteps"
+import TutorialBuilderSteps from "@/components/TutorialBuilderSteps"
 
 export type CategoryNode = {
   enquiry_category_id: string
@@ -59,13 +59,11 @@ export default function TutorialMetadataForm({ categories, onSubmit }: Props) {
       <div className="w-full max-w-5xl">
         {/* ONE CONNECTED CARD */}
         <div className="rounded-2xl bg-white shadow-sm ring-1 ring-slate-200 overflow-hidden">
-          {/* Step Indicator (top section) */}
+          {/* Step Indicator */}
           <TutorialBuilderSteps current={1} />
-
-          {/* Divider between header and body */}
           <div className="h-px bg-slate-200" />
 
-          {/* Body */}
+          {/* Body (centered content) */}
           <div className="p-10 flex justify-center">
             <div className="w-full max-w-3xl">
               <h1 className="text-3xl font-bold text-slate-900">
@@ -98,9 +96,6 @@ export default function TutorialMetadataForm({ categories, onSubmit }: Props) {
                       <button
                         type="button"
                         className="text-xs font-semibold text-red-500 hover:text-red-600"
-                        onClick={() => {
-                          alert("Create Category (hook modal later)")
-                        }}
                       >
                         CREATE NEW +
                       </button>
@@ -135,9 +130,6 @@ export default function TutorialMetadataForm({ categories, onSubmit }: Props) {
                       <button
                         type="button"
                         className="text-xs font-semibold text-red-500 hover:text-red-600"
-                        onClick={() => {
-                          alert("Create Subcategory (hook modal later)")
-                        }}
                       >
                         CREATE NEW +
                       </button>
@@ -147,7 +139,7 @@ export default function TutorialMetadataForm({ categories, onSubmit }: Props) {
                       value={subCategoryId}
                       onChange={(e) => setSubCategoryId(e.target.value)}
                       disabled={!categoryId || subCategories.length === 0}
-                      className="mt-3 w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-slate-900 outline-none focus:border-slate-400 disabled:cursor-not-allowed disabled:bg-slate-50"
+                      className="mt-3 w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-slate-900 outline-none focus:border-slate-400 disabled:bg-slate-50"
                     >
                       <option value="">
                         {categoryId
@@ -182,36 +174,41 @@ export default function TutorialMetadataForm({ categories, onSubmit }: Props) {
                     className="mt-3 w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-slate-900 outline-none focus:border-slate-400"
                   />
                 </div>
-
-                {/* Actions */}
-                <div className="flex items-center justify-end gap-3 pt-2">
-                  <button
-                    type="button"
-                    className="rounded-xl border border-slate-200 px-5 py-3 text-sm font-semibold text-slate-700 hover:bg-slate-50 hover:cursor-pointer"
-                    onClick={() => {
-                      setName("")
-                      setCategoryId("")
-                      setSubCategoryId("")
-                      setEstimatedMins("")
-                    }}
-                  >
-                    Discard
-                  </button>
-
-                  <button
-                    type="submit"
-                    disabled={name.trim().length === 0 || !selectedLeafId}
-                    className="rounded-xl bg-red-500 px-5 py-3 text-sm font-semibold text-white hover:bg-red-600 disabled:cursor-not-allowed disabled:opacity-50 hover:cursor-pointer"
-                  >
-                    Continue
-                  </button>
-                </div>
               </form>
             </div>
+          </div>
+
+          {/* FULL-WIDTH DIVIDER */}
+          <div className="h-px bg-slate-200" />
+
+          {/* Bottom action bar (full width) */}
+          <div className="px-10 py-6 flex items-center justify-end gap-4">
+            <button
+              type="button"
+              className="rounded-xl border border-slate-200 px-6 py-3 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+              onClick={() => {
+                setName("")
+                setCategoryId("")
+                setSubCategoryId("")
+                setEstimatedMins("")
+              }}
+            >
+              Discard
+            </button>
+
+            <button
+              type="button"
+              onClick={handleSubmit}
+              disabled={name.trim().length === 0 || !selectedLeafId}
+              className="rounded-xl bg-red-500 px-7 py-3 text-sm font-semibold text-white hover:bg-red-600 disabled:opacity-50"
+            >
+              Continue
+            </button>
           </div>
         </div>
       </div>
     </div>
   )
+
 
 }

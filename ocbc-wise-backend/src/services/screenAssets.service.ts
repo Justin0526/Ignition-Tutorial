@@ -37,25 +37,34 @@ export async function createScreenAsset(input: CreateScreenAssetInput){
         throw new Error("Only PNG and JPG images are allowed");
     }
 
+   // 2) Read image dimensions (width/height)
+    const dim = imageSize(input.fileBuffer)
+    const width = dim.width ?? 0
+    const height = dim.height ?? 0
+    if (!width || !height) throw new Error("Unable to read image dimensions")
 
-    // 2) Read image dimensions (width/height)
-    const dim = imageSize(input.fileBuffer);
-    const width = dim.width ?? 0;
-    const height = dim.height ?? 0;
-    if (!width || !height) throw new Error("Unable to read PNG dimensions");
+    // ✅ Enforce: design width 430px exported at 2× => file width must be 860px
+    const LOGICAL_WIDTH = 430
+    const EXPORT_SCALE = 2
+    const EXPECTED_UPLOAD_WIDTH = LOGICAL_WIDTH * EXPORT_SCALE // 860
 
-    // 3) Determine screen type (long vs short)
-    // Pick ONE viewport height as your standard (example: 844)
-    const VIEWPORT_HEIGHT = 844;
-    const type = height > VIEWPORT_HEIGHT ? "scrollable" : "static";
+    if (width !== EXPECTED_UPLOAD_WIDTH) {
+    throw new Error(
+        `Screen asset must be exported at 2x from a ${LOGICAL_WIDTH}px-wide Figma frame (expected ${EXPECTED_UPLOAD_WIDTH}px width). Got ${width}px.`
+    )
+    }
 
-    // 4) Create a safe unique object path
+    // ✅ Store logical dimensions in DB
+    const storedWidth = LOGICAL_WIDTH
+    const storedHeight = Math.round(height / EXPORT_SCALE)
+
+    // 3) Create a safe unique object path
     const bucket = "screen-assets";
     const safeBase = input.originalName.replace(/[^a-zA-Z0-9._-]/g, "_");
     const hash = crypto.randomBytes(6).toString("hex");
     const object_path = `screens/${Date.now()}-${hash}-${safeBase}`;
 
-    // 5) Upload to Supabase Storage
+    // 4) Upload to Supabase Storage
     const { error: uploadError } = await supabase.storage
         .from(bucket)
         .upload(object_path, input.fileBuffer, {
@@ -65,20 +74,19 @@ export async function createScreenAsset(input: CreateScreenAssetInput){
     
     if (uploadError) throw new Error(uploadError.message);
 
-    // 6) Insert metadata row into screen_asset table
+    // 5) Insert metadata row into screen_asset table
     const { data: inserted, error: dbError } = await supabase
         .from("screen_asset")
         .insert([
             {
                 name: input.name,
-                type,
                 bucket,
                 object_path,
-                content_width: width,
-                content_height: height,
+                content_width: storedWidth,
+                content_height: storedHeight,
             }
         ])
-        .select("screen_asset_id, name, type, bucket, object_path, content_width, content_height, created_at")
+        .select("screen_asset_id, name, bucket, object_path, content_width, content_height, created_at")
         .single();
 
     if (dbError) throw new Error(dbError.message);
