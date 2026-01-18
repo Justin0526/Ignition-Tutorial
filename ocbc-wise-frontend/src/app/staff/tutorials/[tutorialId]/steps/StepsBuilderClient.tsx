@@ -9,6 +9,7 @@ import type { NavBarAsset } from "@/lib/api/screenAssets"
 import { getNavBarAssets } from "@/lib/api/screenAssets"
 import { upsertTutorialStep } from "@/lib/api/tutorialSteps"
 import { getTutorialSteps } from "@/lib/api/tutorialSteps"
+import { useRouter } from "next/navigation"
 
 type StepTarget = {
   x: number // 0..1 (top-left of target box)
@@ -38,6 +39,7 @@ type Step = {
 type ActionType = "direct_tap" | "scroll_then_tap" | "no_tap"
 
 export default function StepsBuilderClient() {
+  const router = useRouter()
   const [steps, setSteps] = useState<Step[]>([])
   const [activeIndex, setActiveIndex] = useState<number>(0)
 
@@ -810,8 +812,8 @@ export default function StepsBuilderClient() {
                     <button
                       type="button"
                       disabled={!allStepsSaved}
-                      onClick={() => alert("Continue")}
-                      className="rounded-xl bg-red-500 px-7 py-3 text-sm font-semibold text-white hover:bg-red-600 disabled:opacity-50"
+                      onClick={() => { router.push(`/staff/tutorials/${tutorialId}/preview`)}}
+                      className="rounded-xl bg-red-500 px-7 py-3 text-sm font-semibold text-white hover:bg-red-600 disabled:opacity-50 hover:cursor-pointer"
                     >
                       Continue
                     </button>

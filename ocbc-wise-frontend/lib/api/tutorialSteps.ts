@@ -68,9 +68,17 @@ export type TutorialStepRow = {
     is_nav_target: boolean | null
     created_at: string
 
-    // optional if you used Version B join
     screen_name?: string | null
     screen_public_url?: string | null
+
+    // ✅ NEW (from backend join)
+    nav_name?: string | null
+    nav_public_url?: string | null
+
+    // (optional for later, only add if you return them)
+    // nav_content_width?: number | null
+    // nav_content_height?: number | null
+    // nav_pixel_ratio?: number | null
 }
 
 export async function getTutorialSteps(
