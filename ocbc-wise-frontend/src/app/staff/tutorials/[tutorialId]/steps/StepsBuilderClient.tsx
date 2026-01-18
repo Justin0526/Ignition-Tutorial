@@ -32,6 +32,7 @@ type Step = {
   title: string
   target?: StepTarget | null
   draft: StepDraft
+  isSaved?: boolean
 }
 
 type ActionType = "direct_tap" | "scroll_then_tap" | "no_tap"
@@ -87,6 +88,7 @@ export default function StepsBuilderClient() {
   const hasSteps = steps.length > 0
   const activeStep = steps[activeIndex] ?? null
   const activeTarget = activeStep?.target ?? null
+  const allStepsSaved = steps.length > 0 && steps.every((s) => s.isSaved === true)
 
   // ✅ Control preview scrolling ONLY via Action Type slider.
   // - direct_tap: lock preview at top (no scrolling)
@@ -184,6 +186,7 @@ export default function StepsBuilderClient() {
           return {
             id: r.tutorial_step_id,
             title: r.instruction?.trim() ? r.instruction.trim() : "(Untitled Step)",
+            isSaved: true,
             target: hasTarget
               ? {
                   x: r.target_x!,
@@ -216,6 +219,12 @@ export default function StepsBuilderClient() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tutorialVersionId])
 
+  function markActiveStepUnsaved() {
+    if (!hasSteps) return
+    setSteps((prev) =>
+      prev.map((s, idx) => (idx === activeIndex ? { ...s, isSaved: false } : s))
+    )
+  }
 
   function handleAddStep() {
     const nextIndex = steps.length + 1
@@ -384,6 +393,12 @@ export default function StepsBuilderClient() {
           prev.map((s, idx) => (idx === activeIndex ? { ...s, title } : s))
       )
 
+      setSteps((prev) =>
+        prev.map((s, idx) =>
+          idx === activeIndex ? { ...s, isSaved: true } : s
+        )
+      )
+
       // Optional: small success feedback
       // You can replace this with a toast later
       // alert("Saved!")
@@ -445,7 +460,9 @@ export default function StepsBuilderClient() {
                                 >
                                   STEP {idx + 1}
                                 </div>
-                                <div className="mt-1 text-sm font-semibold">{s.title}</div>
+                                <div className="mt-1 text-[10px] font-extrabold tracking-widest opacity-80">
+                                  {s.isSaved ? "SAVED" : "UNSAVED"}
+                                </div>
                               </button>
                             )
                           })}
@@ -491,7 +508,10 @@ export default function StepsBuilderClient() {
                                 </label>
                                 <input
                                   value={instruction}
-                                  onChange={(e) => setInstruction(e.target.value)}
+                                  onChange={(e) => {
+                                    setInstruction(e.target.value)
+                                    markActiveStepUnsaved()
+                                  }}
                                   placeholder="Explain the action..."
                                   className="mt-3 w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-slate-900 outline-none focus:border-slate-400"
                                 />
@@ -507,9 +527,10 @@ export default function StepsBuilderClient() {
                                   <div className="col-span-12 lg:col-span-6">
                                     <select
                                       value={actionType}
-                                      onChange={(e) =>
+                                      onChange={(e) => {
                                         setActionType(e.target.value as ActionType)
-                                      }
+                                        markActiveStepUnsaved()
+                                      }}
                                       className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-slate-900 outline-none focus:border-slate-400"
                                     >
                                       <option value="direct_tap">Direct Tap</option>
@@ -533,11 +554,10 @@ export default function StepsBuilderClient() {
                                             min={0}
                                             max={100}
                                             value={Math.round(scrollProgress * 100)}
-                                            onChange={(e) =>
-                                              setScrollProgress(
-                                                Number(e.target.value) / 100
-                                              )
-                                            }
+                                            onChange={(e) => {
+                                              setScrollProgress(Number(e.target.value) / 100)
+                                              markActiveStepUnsaved()
+                                            }}
                                             className="w-full"
                                           />
                                         </div>
@@ -578,7 +598,10 @@ export default function StepsBuilderClient() {
 
                                 <textarea
                                   value={tip}
-                                  onChange={(e) => setTip(e.target.value)}
+                                  onChange={(e) => {
+                                    setSelectedNavKey(e.target.value)
+                                    markActiveStepUnsaved()
+                                  }}
                                   placeholder="Detail how to help a struggling user..."
                                   className="mt-3 w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-slate-900 outline-none focus:border-slate-400 min-h-[120px] resize-none"
                                 />
@@ -609,15 +632,11 @@ export default function StepsBuilderClient() {
                           </div>
                         </div>
                         {/* Phone frame (click to pick / change) */}
-                        <button
-                          type="button"
-                          className="mt-4 w-full flex items-center justify-center"
-                          onClick={() => {
-                            if (!selectedScreen) setScreenPickerOpen(true)
-                          }}
-                        >
+                        <div className="mt-4 w-full flex items-center justify-center">
                           <div
                             ref={phoneFrameRef}
+                            role="button"
+                            tabIndex={0}
                             className="
                               w-full
                               max-w-[14rem]
@@ -633,11 +652,10 @@ export default function StepsBuilderClient() {
                               transition
                             "
                             onClick={(e) => {
-                              // Only place target when:
-                              // - screen exists
-                              // - step exists
-                              // - actionType is a tap type
-                              if (!selectedScreen) return
+                              if (!selectedScreen) {
+                                setScreenPickerOpen(true)
+                                return
+                              }
                               if (!hasSteps) return
                               if (actionType === "no_tap") return
                               handlePlaceTapTarget(e)
@@ -648,7 +666,9 @@ export default function StepsBuilderClient() {
                                 ref={contentScrollRef}
                                 className={[
                                   "absolute left-0 right-0 top-0",
-                                  actionType === "direct_tap" ? "overflow-hidden" : "overflow-y-auto",
+                                  (actionType === "direct_tap" || actionType === "no_tap")
+                                    ? "overflow-hidden"
+                                    : "overflow-y-auto",
                                   "[scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden",
                                 ].join(" ")}
                                 style={{
@@ -704,7 +724,7 @@ export default function StepsBuilderClient() {
                               </div>
                             )}
                           </div>
-                        </button>
+                        </div>
 
                         {/* ✅ Navbar selection dropdown (below phone frame) */}
                         <div className="mt-6">
@@ -714,7 +734,10 @@ export default function StepsBuilderClient() {
 
                           <select
                             value={selectedNavKey}
-                            onChange={(e) => setSelectedNavKey(e.target.value)}
+                            onChange={(e) => {
+                              setSelectedNavKey(e.target.value)
+                              markActiveStepUnsaved()
+                            }}
                             className="mt-3 w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-slate-900 outline-none focus:border-slate-400"
                           >
                             {/* Placeholder option if nothing loaded yet */}
@@ -731,43 +754,69 @@ export default function StepsBuilderClient() {
                           </select>
                         </div>
                       </section>
-                    </div>
-
-              {/* Footer bar */}
-                    <div className="h-px bg-slate-200" />
-                      <div className="px-6 py-5 flex items-center justify-between">
-                        <div className="flex items-center gap-3 text-slate-600">
-                          <div className="w-9 h-9 rounded-xl bg-slate-100 flex items-center justify-center">
-                            🧾
+                      {/* ✅ Step save bar (below middle + right) */}
+                      <section className="col-span-12 md:col-span-9 border-t border-slate-200 px-6 py-6">
+                        <div className="rounded-2xl border border-slate-200 bg-white p-5 flex items-center justify-between">
+                          <div className="flex items-center gap-3 text-slate-600">
+                            <div className="w-9 h-9 rounded-xl bg-slate-100 flex items-center justify-center">
+                              🧾
+                            </div>
+                            <div>
+                              <div className="text-[10px] font-extrabold tracking-widest text-slate-400">
+                                STEP COMMITMENT
+                              </div>
+                              <div className="text-sm font-semibold text-slate-700">
+                                {!hasSteps
+                                  ? "No steps yet."
+                                  : !selectedScreen
+                                    ? "Waiting for screen selection..."
+                                    : selectedScreen.name}
+                              </div>
+                            </div>
                           </div>
-                          <div>
-                            <div className="text-[10px] font-extrabold tracking-widest text-slate-400">
-                              STEP COMMITMENT
-                            </div>
-                            <div className="text-sm font-semibold text-slate-700">
-                              {!hasSteps
-                                ? "No steps yet."
-                                : selectedScreen
-                                  ? selectedScreen.name
-                                  : "Waiting for screen selection..."}
-                            </div>
+
+                          <div className="flex items-center gap-4">
+                            {saveError && (
+                              <div className="mt-2 text-xs font-semibold text-red-600 px-1">
+                                {saveError}
+                              </div>
+                            )}
+
+                            <button
+                              type="button"
+                              disabled={!hasSteps || saving}
+                              className="rounded-xl bg-slate-900 px-8 py-3 text-xs font-extrabold tracking-widest text-white disabled:opacity-40"
+                              onClick={handleSaveStep}
+                            >
+                              {saving ? "SAVING..." : `SAVE STEP ${hasSteps ? activeIndex + 1 : ""}`}
+                            </button>
                           </div>
                         </div>
-
-                      <button
-                        type="button"
-                        disabled={!hasSteps || saving}
-                        className="rounded-2xl bg-slate-900 px-10 py-3 text-xs font-extrabold tracking-widest text-white disabled:opacity-40"
-                        onClick={handleSaveStep}
-                      >
-                        {saving ? "SAVING..." : `🖨️ SAVE STEP ${hasSteps ? activeIndex + 1 : ""}`}
-                      </button>
-                      {saveError && (
-                          <div className="text-xs font-semibold text-red-600">
-                            {saveError}
-                          </div>
-                        )}
+                      </section>
                     </div>
+                  {/* FULL-WIDTH DIVIDER */}
+                  <div className="h-px bg-slate-200" />
+
+                  {/* Bottom action bar (flow-level) */}
+                  <div className="px-10 py-6 flex items-center justify-end gap-4">
+                    <button
+                      type="button"
+                      className="rounded-xl border border-slate-200 px-6 py-3 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+                      onClick={() => alert("Discard (hook later)")}
+                    >
+                      Discard
+                    </button>
+
+                    <button
+                      type="button"
+                      disabled={!allStepsSaved}
+                      onClick={() => alert("Continue")}
+                      className="rounded-xl bg-red-500 px-7 py-3 text-sm font-semibold text-white hover:bg-red-600 disabled:opacity-50"
+                    >
+                      Continue
+                    </button>
+                  </div>
+
             </div>
 
             {showSaved && (
