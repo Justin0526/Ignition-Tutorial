@@ -75,10 +75,9 @@ export type TutorialStepRow = {
     nav_name?: string | null
     nav_public_url?: string | null
 
-    // (optional for later, only add if you return them)
-    // nav_content_width?: number | null
-    // nav_content_height?: number | null
-    // nav_pixel_ratio?: number | null
+    nav_content_width?: number | null
+    nav_content_height?: number | null
+    nav_pixel_ratio?: number | null
 }
 
 export async function getTutorialSteps(

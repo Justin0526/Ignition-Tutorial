@@ -812,7 +812,7 @@ export default function StepsBuilderClient() {
                     <button
                       type="button"
                       disabled={!allStepsSaved}
-                      onClick={() => { router.push(`/staff/tutorials/${tutorialId}/preview`)}}
+                      onClick={() => { router.push(`/staff/tutorials/${tutorialId}/preview?version=${tutorialVersionId}`)}}
                       className="rounded-xl bg-red-500 px-7 py-3 text-sm font-semibold text-white hover:bg-red-600 disabled:opacity-50 hover:cursor-pointer"
                     >
                       Continue
