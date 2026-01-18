@@ -22,6 +22,7 @@ export type ScreenAsset = {
     content_height: number
     created_at: string
     public_url: string
+    pixel_ratio: number
 }
 
 export async function getScreenAssets(): Promise<ScreenAsset[]>{

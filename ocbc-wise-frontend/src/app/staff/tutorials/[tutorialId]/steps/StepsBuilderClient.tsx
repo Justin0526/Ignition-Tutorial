@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import TutorialBuilderSteps from "@/components/TutorialBuilderSteps"
 import ScreenPickerModal from "@/components/ScreenPickerModal"
 import type { ScreenAsset } from "@/lib/api/screenAssets"
@@ -24,9 +24,29 @@ export default function StepsBuilderClient() {
   const [screenPickerOpen, setScreenPickerOpen] = useState(false)
   const [selectedScreen, setSelectedScreen] = useState<ScreenAsset | null>(null)
 
+  // ✅ This ref points to the scroll container inside the phone preview.
+  // We will scroll it programmatically (no manual scrolling).
+  const contentScrollRef = useRef<HTMLDivElement | null>(null)
 
   const hasSteps = steps.length > 0
-  const activeStep = useMemo(() => steps[activeIndex], [steps, activeIndex])
+
+  // ✅ Control preview scrolling ONLY via Action Type slider.
+  // - direct_tap: lock preview at top (no scrolling)
+  // - scroll_then_tap: scroll programmatically based on scrollProgress (0..1)
+  useEffect(() => {
+    const el = contentScrollRef.current
+    if (!el) return
+
+    // If it's a direct tap step, always show top of page
+    if (actionType === "direct_tap") {
+      el.scrollTop = 0
+      return
+    }
+
+    // If it's scroll then tap, scroll according to slider
+    const maxScroll = el.scrollHeight - el.clientHeight
+    el.scrollTop = maxScroll * scrollProgress
+  }, [actionType, scrollProgress, selectedScreen])
 
   function handleAddStep() {
     const nextIndex = steps.length + 1
@@ -260,21 +280,40 @@ export default function StepsBuilderClient() {
                     bg-white
                     shadow-sm
                     overflow-hidden
-                    flex
-                    items-center
-                    justify-center
+                    relative
                     hover:shadow-md
                     transition
                   "
                 >
                   {selectedScreen ? (
-                    <img
-                      src={selectedScreen.public_url}
-                      alt={selectedScreen.name}
-                      className="w-full h-full object-cover"
-                    />
+                    // ✅ When a screen is selected:
+                    // - Use an internal scroll container BUT hide scrollbar
+                    // - Prevent manual scrolling (wheel/trackpad) so scroll is controlled ONLY by slider
+                    // - direct_tap locks overflow hidden (no scroll)
+                    // - scroll_then_tap allows overflow-y-auto (but still no scrollbar)
+                    <div
+                      ref={contentScrollRef}
+                      className={[
+                        "absolute inset-0",
+                        actionType === "direct_tap"
+                          ? "overflow-hidden"
+                          : "overflow-y-auto",
+                        // Hide scrollbar (Firefox/Edge + Webkit)
+                        "[scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden",
+                      ].join(" ")}
+                      style={{ overscrollBehavior: "none" }}
+                      onWheel={(e) => e.preventDefault()}
+                    >
+                      <img
+                        src={selectedScreen.public_url}
+                        alt={selectedScreen.name}
+                        className="w-full h-auto block"
+                        draggable={false}
+                      />
+                    </div>
                   ) : (
-                    <div className="text-center px-4">
+                    // ✅ When no screen is selected: center the placeholder content
+                    <div className="absolute inset-0 flex items-center justify-center text-center px-4">
                       <div className="text-2xl">📱</div>
                       <div className="mt-3 text-[10px] font-extrabold tracking-widest text-slate-900">
                         CLICK TO CHOOSE PAGE
@@ -284,7 +323,6 @@ export default function StepsBuilderClient() {
                 </div>
               </button>
             </section>
-
           </div>
 
           {/* Footer bar */}
@@ -315,6 +353,7 @@ export default function StepsBuilderClient() {
           </div>
         </div>
       </div>
+
       <ScreenPickerModal
         open={screenPickerOpen}
         onClose={() => setScreenPickerOpen(false)}
@@ -323,7 +362,6 @@ export default function StepsBuilderClient() {
           setScreenPickerOpen(false)
         }}
       />
-
     </div>
   )
 }
