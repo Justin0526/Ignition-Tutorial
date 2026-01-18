@@ -1,4 +1,5 @@
 import { supabase } from "../lib/supabase.js";
+const SUPABASE_URL = process.env.SUPABASE_URL
 
 type TutorialStepInput = {
     tutorial_version_id: string;
@@ -64,4 +65,53 @@ export async function upsertTutorialStep(input: TutorialStepInput) {
     if (!data) throw new Error("Upsert succeeded but no row returned");
 
     return data;
+}
+
+export async function getTutorialStepsByVersion(tutorial_version_id: string) {
+    const { data, error } = await supabase
+        .from("tutorial_step")
+        .select(
+        `
+        tutorial_step_id,
+        tutorial_version_id,
+        step_index,
+        screen_asset_id,
+        scroll_progress,
+        target_x,
+        target_y,
+        target_w,
+        target_h,
+        nav_key,
+        instruction,
+        tip,
+        is_nav_target,
+        created_at,
+        screen_asset:screen_asset_id (
+            screen_asset_id,
+            name,
+            bucket,
+            object_path
+        )
+        `
+        )
+        .eq("tutorial_version_id", tutorial_version_id)
+        .order("step_index", { ascending: true })
+
+    if (error) throw new Error(error.message)
+
+    const rows = (data ?? []).map((r: any) => {
+        const sa = r.screen_asset
+        const screen_public_url =
+        sa?.bucket && sa?.object_path && SUPABASE_URL
+            ? `${SUPABASE_URL}/storage/v1/object/public/${sa.bucket}/${sa.object_path}`
+            : null
+
+        return {
+        ...r,
+        screen_name: sa?.name ?? null,
+        screen_public_url,
+        }
+    })
+
+    return rows
 }

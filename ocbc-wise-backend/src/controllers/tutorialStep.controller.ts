@@ -39,3 +39,18 @@ export async function upsertTutorialStepHandler(req: Request, res: Response) {
         return res.status(500).json({ error: err?.message ?? "Server error" })
     }
 }
+
+export async function getTutorialStepsByVersionHandler(req: Request, res: Response) {
+    try {
+        const { versionId } = req.params
+        if (!versionId) return res.status(400).json({ error: "versionId is required" })
+
+        const steps = await svc.getTutorialStepsByVersion(versionId)
+        return res.status(200).json({ steps })
+    } catch (err: unknown) {
+        if (err instanceof Error) {
+        return res.status(500).json({ error: err.message })
+        }
+        return res.status(500).json({ error: "Server error" })
+    }
+}

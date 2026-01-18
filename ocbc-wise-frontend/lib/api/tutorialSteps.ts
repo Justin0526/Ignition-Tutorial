@@ -51,3 +51,30 @@ export async function upsertTutorialStep(
         }
     )
 }
+
+export type TutorialStepRow = {
+    tutorial_step_id: string
+    tutorial_version_id: string
+    step_index: number
+    screen_asset_id: string
+    nav_key: string
+    instruction: string
+    tip: string | null
+    scroll_progress: number
+    target_x: number | null
+    target_y: number | null
+    target_w: number | null
+    target_h: number | null
+    is_nav_target: boolean | null
+    created_at: string
+
+    // optional if you used Version B join
+    screen_name?: string | null
+    screen_public_url?: string | null
+}
+
+export async function getTutorialSteps(
+    tutorialVersionId: string
+    ): Promise<{ steps: TutorialStepRow[] }> {
+    return fetchJSON(`/staff/tutorial-versions/${tutorialVersionId}/steps`)
+}
