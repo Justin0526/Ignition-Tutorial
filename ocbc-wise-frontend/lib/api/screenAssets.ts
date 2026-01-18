@@ -29,6 +29,23 @@ export async function getScreenAssets(): Promise<ScreenAsset[]>{
     return fetchJSON<ScreenAsset[]>("/staff/screen-assets/all")
 }
 
+export type NavBarAsset = {
+    nav_bar_asset_id: string;
+    name: string;
+    nav_key: string;
+    bucket: string;
+    object_path: string;
+    content_width: number;
+    content_height: number;
+    pixel_ratio: number;
+    created_at: string;
+    public_url: string;
+}
+
+export async function getNavBarAssets(): Promise<NavBarAsset[]>{
+    return fetchJSON<NavBarAsset[]>("/staff/screen-assets/navbar")
+}
+
 type CreateScreenAssetInput = {
     name: string
     file: File

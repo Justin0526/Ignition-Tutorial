@@ -4,13 +4,24 @@ import { useEffect, useRef, useState } from "react"
 import TutorialBuilderSteps from "@/components/TutorialBuilderSteps"
 import ScreenPickerModal from "@/components/ScreenPickerModal"
 import type { ScreenAsset } from "@/lib/api/screenAssets"
+import type { NavBarAsset } from "@/lib/api/screenAssets"
+import { getNavBarAssets } from "@/lib/api/screenAssets"
+
+type StepTarget = {
+  x: number // 0..1 (top-left of target box)
+  y: number // 0..1
+  w: number // 0..1
+  h: number // 0..1
+  isNav: boolean
+}
 
 type Step = {
   id: string
   title: string
+  target?: StepTarget
 }
 
-type ActionType = "direct_tap" | "scroll_then_tap"
+type ActionType = "direct_tap" | "scroll_then_tap" | "no_tap"
 
 export default function StepsBuilderClient() {
   const [steps, setSteps] = useState<Step[]>([])
@@ -24,11 +35,35 @@ export default function StepsBuilderClient() {
   const [screenPickerOpen, setScreenPickerOpen] = useState(false)
   const [selectedScreen, setSelectedScreen] = useState<ScreenAsset | null>(null)
 
+  // ✅ Navbar dropdown state
+  const [navbars, setNavbars] = useState<NavBarAsset[]>([])
+  const [selectedNavKey, setSelectedNavKey] = useState<string>("")
+  // ✅ Find the chosen navbar object from the dropdown selection
+  const selectedNavbar = navbars.find((n) => n.nav_key === selectedNavKey) ?? null
+
+  const phoneFrameRef = useRef<HTMLDivElement | null>(null)
+  const [phoneWidth, setPhoneWidth] = useState(0)
+
+  // ✅ Tap circle default size (ratios, relative to full phone viewport)
+  const TAP_W = 0.12
+  const TAP_H = 0.06
+
+  function clamp(n: number, min: number, max: number) {
+    return Math.max(min, Math.min(max, n))
+  }
+
   // ✅ This ref points to the scroll container inside the phone preview.
   // We will scroll it programmatically (no manual scrolling).
   const contentScrollRef = useRef<HTMLDivElement | null>(null)
 
+  const navbarHeight =
+  selectedNavbar && phoneWidth > 0
+    ? phoneWidth * (selectedNavbar.content_height / selectedNavbar.content_width)
+    : 0
+
   const hasSteps = steps.length > 0
+  const activeStep = steps[activeIndex] ?? null
+  const activeTarget = activeStep?.target ?? null
 
   // ✅ Control preview scrolling ONLY via Action Type slider.
   // - direct_tap: lock preview at top (no scrolling)
@@ -48,6 +83,45 @@ export default function StepsBuilderClient() {
     el.scrollTop = maxScroll * scrollProgress
   }, [actionType, scrollProgress, selectedScreen])
 
+  // ✅ Fetch navbar assets once when page loads
+  useEffect(() => {
+    getNavBarAssets()
+      .then((data) => {
+        console.log("NAVBARS:", data)
+        setNavbars(data)
+
+      })
+      .catch((err) => {
+        console.error("Failed to load navbars:", err)
+      })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  useEffect(() => {
+    if (!phoneFrameRef.current) return
+
+    const el = phoneFrameRef.current
+    const ro = new ResizeObserver((entries) => {
+      const w = entries[0]?.contentRect?.width ?? 0
+      setPhoneWidth(w)
+    })
+
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [])
+
+  useEffect(() => {
+    if (!hasSteps) return
+    if (actionType !== "no_tap") return
+
+    // Clear target for active step when switching to no_tap
+    setSteps((prev) =>
+      prev.map((s, idx) => (idx === activeIndex ? { ...s, target: undefined } : s))
+    )
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [actionType, activeIndex])
+
+
   function handleAddStep() {
     const nextIndex = steps.length + 1
     const newStep: Step = {
@@ -62,6 +136,45 @@ export default function StepsBuilderClient() {
     setActionType("direct_tap")
     setTip("")
     setScrollProgress(0)
+  }
+
+  function handlePlaceTapTarget(e: React.MouseEvent) {
+    e.stopPropagation()
+
+    if (!hasSteps) return
+    if (!selectedScreen) return
+    if (!phoneFrameRef.current) return
+
+    const rect = phoneFrameRef.current.getBoundingClientRect()
+
+    // Click position inside full phone viewport (includes navbar area)
+    const xPx = clamp(e.clientX - rect.left, 0, rect.width)
+    const yPx = clamp(e.clientY - rect.top, 0, rect.height)
+
+    const xCenter = xPx / rect.width
+    const yCenter = yPx / rect.height
+
+    // Convert center → top-left box (tap circle)
+    const w = TAP_W
+    const h = TAP_H
+    let x = xCenter - w / 2
+    let y = yCenter - h / 2
+
+    // Clamp box to viewport bounds
+    x = clamp(x, 0, 1 - w)
+    y = clamp(y, 0, 1 - h)
+
+    // Auto-detect if click is within navbar region (bottom navbarHeight px)
+    const navbarTopPx = rect.height - navbarHeight
+    const isNav = yPx >= navbarTopPx
+
+    setSteps((prev) =>
+      prev.map((s, idx) =>
+        idx === activeIndex
+          ? { ...s, target: { x, y, w, h, isNav } }
+          : s
+      )
+    )
   }
 
   return (
@@ -171,6 +284,7 @@ export default function StepsBuilderClient() {
                           >
                             <option value="direct_tap">Direct Tap</option>
                             <option value="scroll_then_tap">Scroll then Tap</option>
+                            <option value="no_tap">No Tap</option>
                           </select>
                         </div>
 
@@ -252,24 +366,28 @@ export default function StepsBuilderClient() {
                   INTERACTION PLACEMENT
                 </div>
 
-                {selectedScreen && (
-                  <button
-                    type="button"
-                    className="text-xs font-extrabold tracking-widest text-red-500 hover:text-red-600 hover:cursor-pointer"
-                    onClick={() => setScreenPickerOpen(true)}
-                  >
-                    CHANGE SCREEN
-                  </button>
-                )}
+                <div className="flex items-center gap-3">
+                  {selectedScreen && (
+                    <button
+                      type="button"
+                      className="text-xs font-extrabold tracking-widest text-red-500 hover:text-red-600 hover:cursor-pointer"
+                      onClick={() => setScreenPickerOpen(true)}
+                    >
+                      CHANGE SCREEN
+                    </button>
+                  )}
+                </div>
               </div>
-
               {/* Phone frame (click to pick / change) */}
               <button
                 type="button"
                 className="mt-4 w-full flex items-center justify-center"
-                onClick={() => setScreenPickerOpen(true)}
+                onClick={() => {
+                  if (!selectedScreen) setScreenPickerOpen(true)
+                }}
               >
                 <div
+                  ref={phoneFrameRef}
                   className="
                     w-full
                     max-w-[14rem]
@@ -284,24 +402,29 @@ export default function StepsBuilderClient() {
                     hover:shadow-md
                     transition
                   "
+                  onClick={(e) => {
+                    // Only place target when:
+                    // - screen exists
+                    // - step exists
+                    // - actionType is a tap type
+                    if (!selectedScreen) return
+                    if (!hasSteps) return
+                    if (actionType === "no_tap") return
+                    handlePlaceTapTarget(e)
+                  }}
                 >
                   {selectedScreen ? (
-                    // ✅ When a screen is selected:
-                    // - Use an internal scroll container BUT hide scrollbar
-                    // - Prevent manual scrolling (wheel/trackpad) so scroll is controlled ONLY by slider
-                    // - direct_tap locks overflow hidden (no scroll)
-                    // - scroll_then_tap allows overflow-y-auto (but still no scrollbar)
                     <div
                       ref={contentScrollRef}
                       className={[
-                        "absolute inset-0",
-                        actionType === "direct_tap"
-                          ? "overflow-hidden"
-                          : "overflow-y-auto",
-                        // Hide scrollbar (Firefox/Edge + Webkit)
+                        "absolute left-0 right-0 top-0",
+                        actionType === "direct_tap" ? "overflow-hidden" : "overflow-y-auto",
                         "[scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden",
                       ].join(" ")}
-                      style={{ overscrollBehavior: "none" }}
+                      style={{
+                        overscrollBehavior: "none",
+                        bottom: navbarHeight, // ✅ reserve space so bottom content isn't covered by navbar
+                      }}
                       onWheel={(e) => e.preventDefault()}
                     >
                       <img
@@ -312,7 +435,6 @@ export default function StepsBuilderClient() {
                       />
                     </div>
                   ) : (
-                    // ✅ When no screen is selected: center the placeholder content
                     <div className="absolute inset-0 flex items-center justify-center text-center px-4">
                       <div className="text-2xl">📱</div>
                       <div className="mt-3 text-[10px] font-extrabold tracking-widest text-slate-900">
@@ -320,8 +442,64 @@ export default function StepsBuilderClient() {
                       </div>
                     </div>
                   )}
+
+                  {/* ✅ Fixed navbar overlay (must be INSIDE the phone frame container) */}
+                  {selectedNavbar && (
+                    <div className="absolute left-0 right-0 bottom-0 pointer-events-none">
+                      <img
+                        src={selectedNavbar.public_url}
+                        alt={selectedNavbar.name}
+                        className="w-full h-auto block"
+                        draggable={false}
+                      />
+                    </div>
+                  )}
+
+                  {/* ✅ Tap target overlay (only in placement mode or when target exists) */}
+                  {activeTarget && (
+                    <div
+                      className="absolute pointer-events-none"
+                      style={{
+                        left: `${activeTarget.x * 100}%`,
+                        top: `${activeTarget.y * 100}%`,
+                        width: `${activeTarget.w * 100}%`,
+                        height: `${activeTarget.h * 100}%`,
+                      }}
+                    >
+                      <div className="w-full h-full rounded-full border-4 border-red-500 bg-red-500/10 flex items-center justify-center">
+                        <div className="text-[10px] font-extrabold tracking-widest text-red-600">
+                          TAP
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </div>
               </button>
+
+              {/* ✅ Navbar selection dropdown (below phone frame) */}
+              <div className="mt-6">
+                <label className="block text-xs font-extrabold tracking-widest text-slate-500">
+                  NAVIGATION BAR
+                </label>
+
+                <select
+                  value={selectedNavKey}
+                  onChange={(e) => setSelectedNavKey(e.target.value)}
+                  className="mt-3 w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-slate-900 outline-none focus:border-slate-400"
+                >
+                  {/* Placeholder option if nothing loaded yet */}
+                  <option value="" disabled>
+                    {navbars.length > 0 ? "Select a navbar" : "Loading navbars..."}
+                  </option>
+
+                  {/* Display NAME only (as required), but store nav_key as the value */}
+                  {navbars.map((n) => (
+                    <option key={n.nav_bar_asset_id} value={n.nav_key}>
+                      {n.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
             </section>
           </div>
 

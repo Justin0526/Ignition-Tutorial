@@ -9,6 +9,15 @@ export async function getAllScreenAssets(req: any, res: any){
     }
 }
 
+export async function getAllNavBars(req: any, res: any){
+    try{
+        const data = await svc.getAllNavBar()
+        return res.json(data)
+    }catch(err: any){
+        return res.status(500).json({ error: err.message ?? "Server error" })
+    }
+}
+
 export async function createScreenAssets(req: any, res: any){
     try{
         const { name } = req.body;

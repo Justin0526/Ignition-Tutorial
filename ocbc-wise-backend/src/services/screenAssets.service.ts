@@ -24,6 +24,18 @@ type ScreenAssetRow = {
     created_at: string;
 };
 
+type NavBarAssetRow = {
+    nav_bar_asset_id: string;
+    name: string;
+    nav_key: string;
+    bucket: string;
+    object_path: string;
+    content_width: number;
+    content_height: number;
+    pixel_ratio: number;
+    created_at: string;
+}
+
 const LOGICAL_WIDTH = 430;
 
 function buildPublicUrl(bucket: string, object_path: string) {
@@ -44,6 +56,21 @@ export async function getAllScreenAssets() {
     if (error) throw new Error(error.message);
 
     const rows = data ?? []; // ✅ data can be null
+    return rows.map((row) => ({
+        ...row,
+        public_url: buildPublicUrl(row.bucket, row.object_path),
+    }));
+}
+
+export async function getAllNavBar(){
+    const { data, error } = await supabase
+        .from("nav_bar_asset")
+        .select("nav_bar_asset_id,name,nav_key,bucket,object_path,content_width,content_height,pixel_ratio,created_at")
+        .returns<NavBarAssetRow[]>();
+
+    if (error) throw new Error(error.message);
+
+    const rows = data ?? [];
     return rows.map((row) => ({
         ...row,
         public_url: buildPublicUrl(row.bucket, row.object_path),
