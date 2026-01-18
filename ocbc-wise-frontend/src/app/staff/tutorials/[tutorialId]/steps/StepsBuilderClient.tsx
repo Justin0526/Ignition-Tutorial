@@ -1,11 +1,13 @@
 "use client"
 
 import { useEffect, useRef, useState } from "react"
+import { useParams, useSearchParams } from "next/navigation"
 import TutorialBuilderSteps from "@/components/TutorialBuilderSteps"
 import ScreenPickerModal from "@/components/ScreenPickerModal"
 import type { ScreenAsset } from "@/lib/api/screenAssets"
 import type { NavBarAsset } from "@/lib/api/screenAssets"
 import { getNavBarAssets } from "@/lib/api/screenAssets"
+import { upsertTutorialStep } from "@/lib/api/tutorialSteps"
 
 type StepTarget = {
   x: number // 0..1 (top-left of target box)
@@ -43,6 +45,15 @@ export default function StepsBuilderClient() {
 
   const phoneFrameRef = useRef<HTMLDivElement | null>(null)
   const [phoneWidth, setPhoneWidth] = useState(0)
+
+  const params = useParams<{ tutorialId: string }>()
+  const searchParams = useSearchParams()
+
+  const tutorialId = params.tutorialId
+  const tutorialVersionId = searchParams.get("version") ?? ""
+
+  const [saveError, setSaveError] = useState<string | null>(null)
+  const [saving, setSaving] = useState(false)
 
   // ✅ Tap circle default size (ratios, relative to full phone viewport)
   const TAP_W = 0.12
@@ -176,6 +187,70 @@ export default function StepsBuilderClient() {
       )
     )
   }
+
+  async function handleSaveStep() {
+    setSaveError(null)
+
+    if (!hasSteps) {
+      setSaveError("Add a step first.")
+      return
+    }
+    if (!tutorialVersionId) {
+      setSaveError("Missing tutorial version id in URL (?version=...).")
+      return
+    }
+    if (!selectedScreen) {
+      setSaveError("Select a screen (frame) first.")
+      return
+    }
+    if (!selectedNavKey) {
+      setSaveError("Select a navigation bar first.")
+      return
+    }
+    if (!instruction.trim()) {
+      setSaveError("Step instruction is required.")
+      return
+    }
+
+    // No-tap is represented by null targets in DB
+    const isNoTap = actionType === "no_tap" || !activeTarget
+
+    const payload = {
+      screen_asset_id: selectedScreen.screen_asset_id, // <-- if your ScreenAsset uses different id field, tell me
+      nav_key: selectedNavKey,
+      instruction: instruction.trim(),
+      tip: tip.trim() ? tip.trim() : null,
+      scroll_progress: actionType === "scroll_then_tap" ? scrollProgress : 0,
+
+      target_x: isNoTap ? null : activeTarget.x,
+      target_y: isNoTap ? null : activeTarget.y,
+      target_w: isNoTap ? null : activeTarget.w,
+      target_h: isNoTap ? null : activeTarget.h,
+      is_nav_target: isNoTap ? null : activeTarget.isNav,
+    }
+
+    try {
+      setSaving(true)
+
+      await upsertTutorialStep(
+        tutorialVersionId,
+        activeIndex + 1,
+        payload
+      )
+
+      // Optional: small success feedback
+      // You can replace this with a toast later
+      // alert("Saved!")
+    } catch (err: unknown) {
+      if (err instanceof Error) {
+        setSaveError(err.message)
+      } else {
+        setSaveError("Failed to save step.")
+      }
+    } finally {
+          setSaving(false)
+        }
+      }
 
   return (
     <div className="w-full flex justify-center">
@@ -520,14 +595,19 @@ export default function StepsBuilderClient() {
               </div>
             </div>
 
-            <button
-              type="button"
-              disabled={!hasSteps}
-              className="rounded-2xl bg-slate-900 px-10 py-3 text-xs font-extrabold tracking-widest text-white disabled:opacity-40"
-              onClick={() => alert("Save step (hook later)")}
-            >
-              SAVE STEP {hasSteps ? activeIndex + 1 : ""}
-            </button>
+           <button
+            type="button"
+            disabled={!hasSteps || saving}
+            className="rounded-2xl bg-slate-900 px-10 py-3 text-xs font-extrabold tracking-widest text-white disabled:opacity-40"
+            onClick={handleSaveStep}
+           >
+            {saving ? "SAVING..." : `SAVE STEP ${hasSteps ? activeIndex + 1 : ""}`}
+           </button>
+           {saveError && (
+              <div className="text-xs font-semibold text-red-600">
+                {saveError}
+              </div>
+            )}
           </div>
         </div>
       </div>

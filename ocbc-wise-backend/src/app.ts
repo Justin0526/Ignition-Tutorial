@@ -18,6 +18,6 @@ app.get("/health", (req, res) => res.json({ ok: true }))
 app.use("/staff/insights", enquiryRoutes)
 app.use("/staff/screen-assets", screenAssetsRoutes)
 app.use("/staff/tutorials", tutorialRoutes)
-app.use("/staff/tutorial-steps", tutorialStepRoutes)
+app.use("/staff/tutorial-versions", tutorialStepRoutes)
 
 export default app
