@@ -78,3 +78,45 @@ export async function createTutorialDraft(input: CreateTutorialDraftInput){
         throw err;
     }
 }
+
+export type PublishTutorialInput = {
+    tutorial_version_id: string
+    tutorial_id: string
+}
+
+export async function publishTutorialVersion(input: PublishTutorialInput) {
+    const { tutorial_version_id, tutorial_id } = input
+    if (!tutorial_version_id) throw new Error("tutorial_version_id is required")
+    if (!tutorial_id) throw new Error("tutorial_id is required")
+
+    const { data, error } = await supabase
+        .from("tutorial_version")
+        .update({ status: "published" })
+        .eq("tutorial_version_id", tutorial_version_id)
+        .eq("tutorial_id", tutorial_id)
+        .select(
+        `
+        tutorial_version_id,
+        tutorial_id,
+        version_number,
+        status,
+        created_at
+        `
+        )
+        .single()
+
+    if (error) throw new Error(error.message)
+    if (!data) throw new Error("Tutorial version not found (or tutorial_id mismatch)")
+
+    return data
+}
+
+export async function countStepsForVersion(tutorial_version_id: string) {
+    const { count, error } = await supabase
+        .from("tutorial_step")
+        .select("tutorial_step_id", { count: "exact", head: true })
+        .eq("tutorial_version_id", tutorial_version_id)
+
+    if (error) throw new Error(error.message)
+    return count ?? 0
+}

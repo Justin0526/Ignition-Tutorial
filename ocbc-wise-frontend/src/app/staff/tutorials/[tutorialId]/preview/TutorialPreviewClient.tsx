@@ -4,9 +4,18 @@ import TutorialBuilderSteps from "@/components/TutorialBuilderSteps"
 import { useEffect, useMemo, useRef, useState } from "react"
 import { useSearchParams } from "next/navigation"
 import { getTutorialSteps, type TutorialStepRow } from "@/lib/api/tutorialSteps"
+import { useParams } from "next/navigation"
+import { publishTutorial } from "@/lib/api/tutorial" 
 
 export default function TutorialPreviewClient() {
+    const SCROLL_DOWN_MS = 1600
+    const PAUSE_BOTTOM_MS = 2000
+    const SCROLL_UP_MS = 1200
+    const PAUSE_TOP_MS = 600
+
     const searchParams = useSearchParams()
+    const params = useParams<{ tutorialId: string }>()
+    const tutorialId = params.tutorialId
     const tutorialVersionId = searchParams.get("version") ?? ""
 
     const [rows, setRows] = useState<TutorialStepRow[]>([])
@@ -15,7 +24,14 @@ export default function TutorialPreviewClient() {
     const [currentStepIndex, setCurrentStepIndex] = useState(0)
     const [showShake, setShowShake] = useState(false)
     const [wrongCount, setWrongCount] = useState(0) // optional, for future feedback
+    const screenViewportRef = useRef<HTMLDivElement | null>(null)
+    const screenImgRef = useRef<HTMLImageElement | null>(null)
+    const [screenLoadedTick, setScreenLoadedTick] = useState(0) // bump on img load
+    const currentAnimRef = useRef<Animation | null>(null)
+    const [isTapEnabled, setIsTapEnabled] = useState(true)
 
+    const [publishing, setPublishing] = useState(false)
+    const [publishOk, setPublishOk] = useState(false)
 
     // Step 1 only for now
     const activeStep = useMemo(
@@ -47,8 +63,6 @@ export default function TutorialPreviewClient() {
             ? phoneWidth * (activeStep.nav_content_height / activeStep.nav_content_width)
             : 0
 
-
-
     useEffect(() => {
     if (!tutorialVersionId) return
 
@@ -71,6 +85,12 @@ export default function TutorialPreviewClient() {
         setCurrentStepIndex(0)
     }, [tutorialVersionId])
 
+    useEffect(() => {
+        const sp = activeStep?.scroll_progress ?? 0
+        setIsTapEnabled(sp <= 0) // direct tap enabled, scroll steps disabled until bottom
+    }, [activeStep?.tutorial_step_id, activeStep?.scroll_progress])
+
+
     function clamp(n: number, min: number, max: number) {
         return Math.max(min, Math.min(max, n))
     }
@@ -92,6 +112,10 @@ export default function TutorialPreviewClient() {
     }
 
     function handlePhoneTap(e: React.MouseEvent<HTMLDivElement>) {
+        if (!isTapEnabled) {
+            return
+        }
+
         if (!activeStep) return
 
         // no_tap steps should not require hit testing
@@ -132,6 +156,122 @@ export default function TutorialPreviewClient() {
             step.target_w != null &&
             step.target_h != null
         )
+    }
+
+    useEffect(() => {
+        // stop any previous animation
+        currentAnimRef.current?.cancel()
+        currentAnimRef.current = null
+
+        const step = activeStep
+        if (!step) return
+
+        const spRaw = step.scroll_progress ?? 0
+        const sp = Math.max(0, Math.min(1, spRaw))
+        if (sp <= 0) return
+
+        const viewport = screenViewportRef.current
+        const img = screenImgRef.current
+        if (!viewport || !img) return
+
+        const layer = viewport.querySelector<HTMLDivElement>("#screen-anim-layer")
+        if (!layer) return
+
+        // compute how much vertical movement is possible
+        const viewportH = viewport.clientHeight
+        const imgH = img.getBoundingClientRect().height
+        const maxShift = Math.max(0, imgH - viewportH)
+
+        // if nothing to scroll, do nothing
+        if (maxShift <= 1) return
+
+        // target shift based on scroll_progress
+        const targetShift = maxShift * sp
+
+        let cancelled = false
+
+        const animateOnce = async () => {
+            setIsTapEnabled(false) // ✅ disable while moving
+
+            layer.style.transform = "translateY(0px)"
+            // down
+            currentAnimRef.current = layer.animate(
+            [
+                { transform: "translateY(0px)" },
+                { transform: `translateY(${-targetShift}px)` },
+            ],
+            {
+                duration: SCROLL_DOWN_MS,
+                easing: "cubic-bezier(0.22, 0.61, 0.36, 1)",
+                fill: "forwards",
+            }
+            )
+
+            await currentAnimRef.current.finished.catch(() => {})
+            if (cancelled) return
+
+            setIsTapEnabled(true) // ✅ now user can tap (we're at target)
+            await new Promise((r) => setTimeout(r, PAUSE_BOTTOM_MS))
+            if (cancelled) return
+
+            setIsTapEnabled(false) // leaving target region
+
+            // up
+           currentAnimRef.current = layer.animate(
+            [
+                { transform: `translateY(${-targetShift}px)` },
+                { transform: "translateY(0px)" },
+            ],
+            {
+                duration: SCROLL_UP_MS,
+                easing: "ease-in-out",
+                fill: "forwards",
+            }
+            )
+
+            await currentAnimRef.current.finished.catch(() => {})
+            if (cancelled) return
+
+            await new Promise((r) => setTimeout(r, PAUSE_TOP_MS))
+        }
+
+        ;(async () => {
+            while (!cancelled) {
+            await animateOnce()
+            }
+        })()
+
+        return () => {
+            cancelled = true
+            currentAnimRef.current?.cancel()
+            currentAnimRef.current = null
+        }
+        }, [
+        activeStep?.tutorial_step_id,
+        activeStep?.scroll_progress,
+        navbarHeight,
+        screenLoadedTick,
+    ])
+
+    async function handlePublish() {
+        if (!tutorialId || !tutorialVersionId) return
+
+        try {
+            setPublishing(true)
+            await publishTutorial({
+            tutorial_id: tutorialId,
+            tutorial_version_id: tutorialVersionId,
+            })
+            setPublishOk(true)
+        } catch (e: unknown) {
+            if (e instanceof Error) {
+                alert(e.message)
+            } else {
+                alert("Failed to publish tutorial")
+            }
+        } finally {
+            setPublishing(false)
+        }
     }
 
   return (
@@ -209,40 +349,46 @@ export default function TutorialPreviewClient() {
                         {/* Screen image */}
                         {activeStep?.screen_public_url && (
                             <div
-                            className="absolute left-0 right-0 top-0 overflow-hidden"
-                            style={{
-                                bottom: navbarHeight, // reserve space so navbar doesn’t cover content
-                            }}
+                                ref={screenViewportRef}
+                                className="absolute left-0 right-0 top-0 overflow-hidden"
+                                style={{ bottom: navbarHeight }}
                             >
-                            <img
-                                src={activeStep?.screen_public_url}
-                                alt={activeStep.screen_name ?? "Screen"}
-                                className="w-full h-auto block"
-                                draggable={false}
-                            />
+                                <div id="screen-anim-layer" className="w-full" style={{ willChange: "transform" }}>
+                                <img
+                                    ref={screenImgRef}
+                                    src={activeStep.screen_public_url}
+                                    alt={activeStep.screen_name ?? "Screen"}
+                                    className="w-full h-auto block"
+                                    draggable={false}
+                                    onLoad={() => setScreenLoadedTick((x) => x + 1)}
+                                />
+                                </div>
                             </div>
                         )}
 
                         {/* Tap target cue */}
                         {hasTarget(activeStep) && (
-                        <div
-                            className="absolute pointer-events-none"
-                            style={{
-                            left: `${activeStep!.target_x! * 100}%`,
-                            top: `${activeStep!.target_y! * 100}%`,
-                            width: `${activeStep!.target_w! * 100}%`,
-                            height: `${activeStep!.target_h! * 100}%`,
-                            }}
-                        >
-                            <div className="w-full h-full rounded-full border-4 border-red-500/80 bg-red-500/10 flex items-center justify-center">
-                            <div className="w-3 h-3 rounded-full bg-red-500 animate-ping" />
+                            <div
+                                className={[
+                                "absolute pointer-events-none z-20",
+                                !isTapEnabled ? "opacity-40" : "",
+                                ].join(" ")}
+                                style={{
+                                left: `${activeStep!.target_x! * 100}%`,
+                                top: `${activeStep!.target_y! * 100}%`,
+                                width: `${activeStep!.target_w! * 100}%`,
+                                height: `${activeStep!.target_h! * 100}%`,
+                                }}
+                            >
+                                <div className="w-full h-full rounded-full border-4 border-red-500/80 bg-red-500/10 flex items-center justify-center">
+                                <div className="w-3 h-3 rounded-full bg-red-500 animate-ping" />
+                                </div>
                             </div>
-                        </div>
                         )}
 
                         {/* Navbar overlay */}
                         {activeStep?.nav_public_url && (
-                            <div className="absolute left-0 right-0 bottom-0 pointer-events-none">
+                            <div className="absolute left-0 right-0 bottom-0 pointer-events-none z-10">
                             <img
                                 src={activeStep.nav_public_url}
                                 alt={activeStep.nav_name ?? "Navbar"}
@@ -304,10 +450,11 @@ export default function TutorialPreviewClient() {
 
               <button
                 type="button"
+                disabled={publishing || rows.length === 0}
                 className="rounded-xl bg-red-500 px-7 py-3 text-sm font-semibold text-white hover:bg-red-600 disabled:opacity-50"
-                onClick={() => {}}
+                onClick={handlePublish}
               >
-                Publish tutorial
+                {publishing ? "Publishing..." : publishOk ? "Published ✓" : "Publish tutorial"}
               </button>
             </div>
           </div>

@@ -31,3 +31,31 @@ export async function createTutorialDraftHandler(req: Request, res: Response){
         return res.status(500).json({ error: err?.message ?? "Server error" });
     }
 }
+export async function publishTutorial(req: Request, res: Response) {
+    try {
+        const { tutorial_version_id, tutorial_id } = req.body
+
+        if (!tutorial_version_id) {
+            return res.status(400).json({ error: "tutorial_version_id is required" })
+        }
+        if (!tutorial_id) {
+            return res.status(400).json({ error: "tutorial_id is required" })
+        }
+
+        // block publish if no steps exist
+        // If you don’t want this yet, remove this block.
+        const stepCount = await svc.countStepsForVersion(tutorial_version_id)
+        if (stepCount === 0) {
+            return res.status(400).json({ error: "Cannot publish: version has no steps" })
+        }
+
+        const published = await svc.publishTutorialVersion({
+            tutorial_version_id,
+            tutorial_id,
+        })
+
+        return res.status(200).json({ ok: true, version: published })
+    } catch (err: any) {
+        return res.status(500).json({ error: err.message ?? "Server error" })
+    }
+}

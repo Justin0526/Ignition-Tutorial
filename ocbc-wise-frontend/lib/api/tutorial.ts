@@ -49,6 +49,24 @@ export async function getEnquiryCategories(): Promise<EnquiryCategory[]> {
     return fetchJSON<EnquiryCategory[]>("/staff/insights/all-categories")
 }
 
+export async function publishTutorial(input: {tutorial_version_id:string, tutorial_id:string}){
+    const res = await fetch(`${BASE}/staff/tutorials/publish`, {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+            tutorial_version_id: input.tutorial_version_id,
+            tutorial_id: input.tutorial_id,
+        }),
+    })
 
+    if (!res.ok){
+        const errorBody = await res.json()
+        throw new Error(errorBody.error || `API error ${res.status}`)
+    }
+
+    return res.json()
+}
 
 
