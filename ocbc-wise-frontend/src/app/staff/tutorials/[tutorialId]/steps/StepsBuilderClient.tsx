@@ -601,7 +601,7 @@ export default function StepsBuilderClient() {
                                 <textarea
                                   value={tip}
                                   onChange={(e) => {
-                                    setSelectedNavKey(e.target.value)
+                                    setTip(e.target.value)
                                     markActiveStepUnsaved()
                                   }}
                                   placeholder="Detail how to help a struggling user..."

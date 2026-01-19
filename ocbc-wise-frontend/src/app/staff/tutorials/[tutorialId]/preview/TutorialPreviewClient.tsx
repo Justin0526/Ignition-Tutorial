@@ -32,6 +32,7 @@ export default function TutorialPreviewClient() {
 
     const [publishing, setPublishing] = useState(false)
     const [publishOk, setPublishOk] = useState(false)
+    const [isTipFlipped, setIsTipFlipped] = useState(false)
 
     // Step 1 only for now
     const activeStep = useMemo(
@@ -90,6 +91,9 @@ export default function TutorialPreviewClient() {
         setIsTapEnabled(sp <= 0) // direct tap enabled, scroll steps disabled until bottom
     }, [activeStep?.tutorial_step_id, activeStep?.scroll_progress])
 
+    useEffect(() => {
+        setIsTipFlipped(false)
+    }, [activeStep?.tutorial_step_id])
 
     function clamp(n: number, min: number, max: number) {
         return Math.max(min, Math.min(max, n))
@@ -274,6 +278,42 @@ export default function TutorialPreviewClient() {
         }
     }
 
+    function getCoachmarkPosition(step: TutorialStepRow) {
+        // Bottom card for no-target steps
+        if (!hasTarget(step)) {
+            return {
+            left: "50%",
+            top: "78%",
+            anchor: "center" as const,
+            }
+        }
+
+        const cx = step.target_x! + step.target_w! / 2
+        const cy = step.target_y!
+
+        if (cx < 0.3) {
+            return {
+            left: `${(step.target_x! + step.target_w!) * 100}%`,
+            top: `${Math.max(6, (cy - 0.12) * 100)}%`,
+            anchor: "left" as const,
+            }
+        }
+
+        if (cx > 0.7) {
+            return {
+            left: `${step.target_x! * 100}%`,
+            top: `${Math.max(6, (cy - 0.12) * 100)}%`,
+            anchor: "right" as const,
+            }
+        }
+
+        return {
+            left: `${cx * 100}%`,
+            top: `${Math.max(6, (cy - 0.12) * 100)}%`,
+            anchor: "center" as const,
+        }
+    }
+
   return (
     <div className="w-full flex justify-center">
       <div className="w-full max-w-5xl">
@@ -287,6 +327,20 @@ export default function TutorialPreviewClient() {
                 60% { transform: translateX(-4px); }
                 80% { transform: translateX(4px); }
                 }
+                .coachmark-3d {
+                    perspective: 900px;
+                }
+                .coachmark-inner {
+                    transform-style: preserve-3d;
+                }
+                .coachmark-face {
+                    backface-visibility: hidden;
+                    -webkit-backface-visibility: hidden;
+                }
+                .coachmark-back {
+                    transform: rotateY(180deg);
+                }
+
             `}</style>
 
           {/* Step Indicator */}
@@ -403,6 +457,97 @@ export default function TutorialPreviewClient() {
                             <div className="absolute inset-0 flex items-center justify-center text-sm text-slate-500">
                             No steps found for this version.
                             </div>
+                        )}
+                        {/* Coachmark overlay (in-phone instructions) */}
+                        {activeStep?.instruction && !loading && !error && (
+                        <div className="absolute inset-0 z-30 pointer-events-none">
+                            {/* Optional dim backdrop (very "tutorial-ish") */}
+                            <div className="absolute inset-0 bg-black/25" />
+
+                            {/* Instruction bubble */}
+                            {(() => {
+                            const pos = getCoachmarkPosition(activeStep)
+                            return (
+                                <div
+                                className="absolute px-4"
+                                style={{
+                                    left: pos.left,
+                                    top: pos.top,
+                                    transform:
+                                        pos.anchor === "center"
+                                        ? "translate(-50%, -50%)"
+                                        : pos.anchor === "left"
+                                        ? "translate(0, -50%)"
+                                        : "translate(-100%, -50%)",
+                                    width: "90%",
+                                    maxWidth: "260px",
+                                }}
+                                >
+                                <div className="rounded-2xl bg-white/95 shadow-lg ring-1 ring-black/5 px-3 py-3">
+                                    {(() => {
+                                        const tipText = (activeStep.tip ?? "").trim()
+                                        const hasTip = tipText.length > 0
+
+                                        return (
+                                            <div
+                                            className="coachmark-3d"
+                                            // IMPORTANT: allow clicking this card only
+                                            style={{ pointerEvents: "auto" }}
+                                            onClick={(e) => {
+                                                if (!hasTip) return
+                                                e.stopPropagation() // prevent triggering handlePhoneTap
+                                                setIsTipFlipped((v) => !v)
+                                            }}
+                                            >
+                                            <div
+                                                className="coachmark-inner relative"
+                                                style={{
+                                                transition: "transform 450ms cubic-bezier(0.22, 0.61, 0.36, 1)",
+                                                transform: isTipFlipped ? "rotateY(180deg)" : "rotateY(0deg)",
+                                                }}
+                                            >
+                                                {/* FRONT: Instruction */}
+                                                <div className="coachmark-face rounded-xl bg-white/95 shadow-lg ring-1 ring-black/5 p-3">
+                                                <div className="text-xs font-extrabold tracking-widest text-slate-400">
+                                                    STEP {currentStepIndex + 1} OF {rows.length}
+                                                </div>
+
+                                                <div className="mt-2 text-[13px] font-medium text-slate-900">
+                                                    {activeStep.instruction}
+                                                </div>
+
+                                                {/* Hint only if there is a tip */}
+                                                {hasTip && !isTipFlipped && (
+                                                    <div className="mt-2 text-[11px] font-bold text-slate-400 text-right tracking-widest">
+                                                    CLICK ME
+                                                    </div>
+                                                )}
+                                                </div>
+
+                                                {/* BACK: Tip */}
+                                                <div className="coachmark-face coachmark-back absolute inset-0 rounded-xl bg-white/95 shadow-lg ring-1 ring-black/5 p-3">
+                                                <div className="text-xs font-extrabold tracking-widest text-slate-400">
+                                                    TIP
+                                                </div>
+
+                                                <div className="mt-2 text-[13px] font-medium text-slate-900">
+                                                    {tipText}
+                                                </div>
+
+                                                <div className="mt-2 text-[11px] font-bold text-slate-400 text-right tracking-widest">
+                                                    TAP TO GO BACK
+                                                </div>
+                                                </div>
+                                            </div>
+                                            </div>
+                                        )
+                                    })()}
+
+                                </div>
+                                </div>
+                            )
+                            })()}
+                        </div>
                         )}
                         </div>
 
