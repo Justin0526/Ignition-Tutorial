@@ -9,4 +9,7 @@ router.post("/drafts", ctrl.createTutorialDraftHandler);
 // POST /staff/tutorials/publish
 router.post("/publish", ctrl.publishTutorial);
 
+// GET /staff/tutorials/published
+router.get("/published", ctrl.getAllPublishedTutorials);
+
 export default router;

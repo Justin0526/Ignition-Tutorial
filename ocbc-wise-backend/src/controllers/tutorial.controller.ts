@@ -59,3 +59,12 @@ export async function publishTutorial(req: Request, res: Response) {
         return res.status(500).json({ error: err.message ?? "Server error" })
     }
 }
+
+export async function getAllPublishedTutorials(req: Request, res:Response){
+    try{
+        const data = await svc.getAllPublishedTutorials();
+        return res.status(200).json(data);
+    }catch(err: any){
+        return res.status(500).json({ error : err.message ?? "Server error" })
+    }
+}

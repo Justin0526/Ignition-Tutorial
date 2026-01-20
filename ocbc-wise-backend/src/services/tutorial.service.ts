@@ -1,4 +1,5 @@
 import { supabase } from "../lib/supabase.js"
+import { getTutorialStepsByVersion } from "./tutorialStep.service.js"
 
 export type CreateTutorialDraftInput = {
     name: string,
@@ -119,4 +120,23 @@ export async function countStepsForVersion(tutorial_version_id: string) {
 
     if (error) throw new Error(error.message)
     return count ?? 0
+}
+
+// Get all published tutorials
+export async function getAllPublishedTutorials(){
+    const { data, error } = await supabase
+        .from("tutorial_version")
+        .select(`
+            tutorial_version_id, 
+            tutorial_id,
+            version_number,
+            status,
+            created_at
+            `
+        )
+        
+        .eq("status","published")
+
+    if (error) throw new Error(error.message);
+    return data;
 }
