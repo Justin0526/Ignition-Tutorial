@@ -1,5 +1,5 @@
-import InsightsCard from "@/components/staff/InsightsCard"
-import ContinuousImprovement from "@/components/staff/ContinuousImprovement"
+import InsightsCard from "@/components/InsightsCard"
+import ContinuousImprovement from "@/components/ContinuousImprovement"
 import { getTopFrequentlyAsked, getTopMostEscalated } from "@/lib/api/staffInsights"
 
 export default async function InsightsPage() {

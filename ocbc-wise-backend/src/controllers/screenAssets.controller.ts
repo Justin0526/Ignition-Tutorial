@@ -9,6 +9,15 @@ export async function getAllScreenAssets(req: any, res: any){
     }
 }
 
+export async function getAllNavBars(req: any, res: any){
+    try{
+        const data = await svc.getAllNavBar()
+        return res.json(data)
+    }catch(err: any){
+        return res.status(500).json({ error: err.message ?? "Server error" })
+    }
+}
+
 export async function createScreenAssets(req: any, res: any){
     try{
         const { name } = req.body;
@@ -25,7 +34,14 @@ export async function createScreenAssets(req: any, res: any){
         });
 
         return res.status(201).json(created);
-    } catch(err: any){
-        return res.status(500).json({ error: err.message ?? "Server error" });
-    }
+    } catch (err: any) {
+        const msg = err?.message ?? "Server error"
+
+        // width/type validation -> 400
+        if (msg.includes("width must be")) {
+            return res.status(400).json({ error: msg })
+        }
+
+        return res.status(500).json({ error: msg })
+   }
 }

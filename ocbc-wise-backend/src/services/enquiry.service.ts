@@ -19,3 +19,12 @@ export async function getTop5EscalatedEnquiries(){
         if (error) throw new Error(error.message)
             return data
 }
+
+export async function getAllEnquiryCategories(){
+    const { data, error } = await supabase
+        .from("enquiry_category")
+        .select("enquiry_category_id, name, parent_id")
+
+        if (error) throw new Error(error.message)
+            return data
+}

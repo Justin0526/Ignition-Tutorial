@@ -8,6 +8,9 @@ const upload = multer({ storage: multer.memoryStorage() })
 // GET /staff/screen-assets/all
 router.get("/all", ctrl.getAllScreenAssets)
 
+// GET /staff/screen-assets/navbar
+router.get("/navbar", ctrl.getAllNavBars)
+
 // POST /staff/screen-assets
 router.post("/", upload.single("file"), ctrl.createScreenAssets);
 
