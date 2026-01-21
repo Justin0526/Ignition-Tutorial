@@ -60,11 +60,34 @@ export async function publishTutorial(req: Request, res: Response) {
     }
 }
 
-export async function getAllPublishedTutorials(req: Request, res:Response){
-    try{
-        const data = await svc.getAllPublishedTutorials();
+export async function getTutorialLibraryHandler(req: Request, res: Response) {
+    try {
+        const search =
+        typeof req.query.search === "string" ? req.query.search : undefined;
+
+        const status =
+        typeof req.query.status === "string" ? req.query.status : undefined;
+
+        if (status && status !== "draft" && status !== "published") {
+            return res.status(400).json({ error: "Invalid status. Use draft or published." });
+        }
+
+        const data = await svc.getTutorialLibrary({ search, status: status as any });
+
         return res.status(200).json(data);
-    }catch(err: any){
-        return res.status(500).json({ error : err.message ?? "Server error" })
+    } catch (err: any) {
+        return res.status(500).json({ error: err.message ?? "Server error" });
+    }
+}
+
+export async function resolveEditHandler(req: Request, res: Response) {
+    try {
+        const tutorialId = req.params.tutorialId;
+
+        const result = await svc.resolveEditableVersion({ tutorial_id: tutorialId });
+
+        return res.status(200).json(result);
+    } catch (err: any) {
+        return res.status(500).json({ error: err.message ?? "Server error" });
     }
 }

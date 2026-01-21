@@ -1,17 +1,19 @@
 const BASE = process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/$/, "") || "http://localhost:5001"
 
-async function fetchJSON<T>(path: string, options?: RequestInit): Promise<T>{
+async function fetchJSON<T>(path: string, options?: RequestInit): Promise<T> {
     const res = await fetch(`${BASE}${path}`, {
         cache: "no-store",
         ...options,
-    })
+    });
 
-    if (!res.ok){
-        throw new Error(`API error ${res.status}`)
+    if (!res.ok) {
+        const errorBody = await res.json().catch(() => ({}));
+        throw new Error(errorBody.error || `API error ${res.status}`);
     }
 
-    return res.json()
+    return res.json();
 }
+
 
 // Create tutorial + draft v1
 export type Tutorial = {
@@ -68,5 +70,53 @@ export async function publishTutorial(input: {tutorial_version_id:string, tutori
 
     return res.json()
 }
+
+export type TutorialLibraryRow = {
+    tutorial_id: string;
+    tutorial_name: string;
+    estimated_time_sec: number;
+    enquiry_category_id: string;
+    enquiry_category_name: string;
+    tutorial_created_at: string;
+
+    latest_tutorial_version_id: string;
+    latest_version_number: number;
+    latest_status: "draft" | "published";
+    latest_version_created_at: string;
+};
+
+export async function getTutorialLibrary(input?: {
+    search?: string;
+    status?: "draft" | "published";
+    }): Promise<TutorialLibraryRow[]> {
+    const params = new URLSearchParams();
+
+    if (input?.search?.trim()) params.set("search", input.search.trim());
+    if (input?.status) params.set("status", input.status);
+
+    const qs = params.toString();
+    const path = `/staff/tutorials/library${qs ? `?${qs}` : ""}`;
+
+    return fetchJSON<TutorialLibraryRow[]>(path);
+}
+
+export async function resolveEditTutorial(tutorialId: string): Promise<{
+    tutorial_id: string;
+    tutorial_version_id: string;
+    action?: "opened_existing_draft" | "created_new_draft_from_published";
+    }> {
+    const res = await fetch(`${BASE}/staff/tutorials/${tutorialId}/resolve-edit`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+    });
+
+    if (!res.ok) {
+        const errorBody = await res.json().catch(() => ({}));
+        throw new Error(errorBody.error || `API error ${res.status}`);
+    }
+
+    return res.json();
+}
+
 
 

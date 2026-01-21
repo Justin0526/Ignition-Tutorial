@@ -1,4 +1,7 @@
+"use client"
+import { useRouter } from "next/navigation";
 export default function ContinuousImprovement() {
+    const router = useRouter();
     return (
         <section className="mt-8 rounded-2xl bg-red-500 px-8 py-8 text-white shadow-sm">
             <div className="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
@@ -10,7 +13,8 @@ export default function ContinuousImprovement() {
                     </p>
                 </div>
 
-                <button className="w-full cursor-pointer rounded-xl bg-white px-6 py-3 text-sm font-semibold text-red-600 shadow-sm hover:bg-white/80 lg:w-auto">
+                <button className="w-full cursor-pointer rounded-xl bg-white px-6 py-3 text-sm font-semibold text-red-600 shadow-sm hover:bg-white/80 lg:w-auto"
+                onClick={() => { router.push("/staff/tutorials/new")}}>
                     Build Custom Tutorial
                 </button>
             </div>

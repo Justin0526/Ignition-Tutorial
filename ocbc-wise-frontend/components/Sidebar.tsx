@@ -13,7 +13,7 @@ export default function Sidebar() {
   const pathname = usePathname()
   const items: NavItem[] = [
     { label: "📊 Insights & Pulse", href: "/staff/insights" },
-    { label: "📚 Tutorial Library", href: "/tutorial-library" },
+    { label: "📚 Tutorial Library", href: "/staff/tutorials/library" },
     { label: "📱 App Screens", href: "/staff/app-screens" },
     { label: "➕ New Tutorial", href: "/staff/tutorials/new" },
   ]

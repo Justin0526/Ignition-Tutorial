@@ -368,7 +368,7 @@ export default function TutorialPreviewClient() {
                 </div>
             )}
 
-              {/* Center phone frame */}
+            {/* Center phone frame */}
             <div className="w-full flex justify-center">
                 <div className="w-full max-w-[340px]">
                     {/* Outer device shell (black frame) */}

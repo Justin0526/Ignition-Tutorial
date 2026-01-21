@@ -76,101 +76,101 @@ export async function upsertTutorialStep(input: TutorialStepInput) {
 }
 
 export async function getTutorialStepsByVersion(tutorial_version_id: string) {
-  const { data, error } = await supabase
-    .from("tutorial_step")
-    .select(
-      `
-      tutorial_step_id,
-      tutorial_version_id,
-      step_index,
-      screen_asset_id,
-      scroll_progress,
-      target_x,
-      target_y,
-      target_w,
-      target_h,
-      nav_key,
-      instruction,
-      tip,
-      is_nav_target,
-      created_at,
-      screen_asset:screen_asset_id (
-        screen_asset_id,
-        name,
-        bucket,
-        object_path
-      )
-      `
-    )
-    .eq("tutorial_version_id", tutorial_version_id)
-    .order("step_index", { ascending: true })
-
-  if (error) throw new Error(error.message)
-
-  const steps = (data ?? []) as any[]
-
-  // Collect unique nav_keys
-  const navKeys = Array.from(
-    new Set(
-      steps
-        .map((s) => s.nav_key)
-        .filter((k): k is string => typeof k === "string" && k.length > 0)
-    )
-  )
-
-  // Fetch nav bar assets
-  const navMap = new Map<string, any>()
-
-  if (navKeys.length > 0) {
-    const { data: navData, error: navError } = await supabase
-      .from("nav_bar_asset")
+    const { data, error } = await supabase
+      .from("tutorial_step")
       .select(
         `
-        nav_bar_asset_id,
-        name,
+        tutorial_step_id,
+        tutorial_version_id,
+        step_index,
+        screen_asset_id,
+        scroll_progress,
+        target_x,
+        target_y,
+        target_w,
+        target_h,
         nav_key,
-        bucket,
-        object_path,
-        content_width,
-        content_height,
-        pixel_ratio,
-        created_at
+        instruction,
+        tip,
+        is_nav_target,
+        created_at,
+        screen_asset:screen_asset_id (
+          screen_asset_id,
+          name,
+          bucket,
+          object_path
+        )
         `
       )
-      .in("nav_key", navKeys)
+      .eq("tutorial_version_id", tutorial_version_id)
+      .order("step_index", { ascending: true })
 
-    if (navError) throw new Error(navError.message)
+    if (error) throw new Error(error.message)
 
-    for (const nav of navData ?? []) {
-      navMap.set(nav.nav_key, nav)
+    const steps = (data ?? []) as any[]
+
+    // Collect unique nav_keys
+    const navKeys = Array.from(
+      new Set(
+        steps
+          .map((s) => s.nav_key)
+          .filter((k): k is string => typeof k === "string" && k.length > 0)
+      )
+    )
+
+    // Fetch nav bar assets
+    const navMap = new Map<string, any>()
+
+    if (navKeys.length > 0) {
+      const { data: navData, error: navError } = await supabase
+        .from("nav_bar_asset")
+        .select(
+          `
+          nav_bar_asset_id,
+          name,
+          nav_key,
+          bucket,
+          object_path,
+          content_width,
+          content_height,
+          pixel_ratio,
+          created_at
+          `
+        )
+        .in("nav_key", navKeys)
+
+      if (navError) throw new Error(navError.message)
+
+      for (const nav of navData ?? []) {
+        navMap.set(nav.nav_key, nav)
+      }
     }
-  }
 
-  // Merge derived URLs
-  const rows = steps.map((r) => {
-    const sa = r.screen_asset
-    const nav = r.nav_key ? navMap.get(r.nav_key) : null
+    // Merge derived URLs
+    const rows = steps.map((r) => {
+      const sa = r.screen_asset
+      const nav = r.nav_key ? navMap.get(r.nav_key) : null
 
-    return {
-      ...r,
+      return {
+        ...r,
 
-      screen_name: sa?.name ?? null,
-      screen_public_url:
-        sa?.bucket && sa?.object_path
-          ? buildPublicUrl(sa.bucket, sa.object_path)
-          : null,
+        screen_name: sa?.name ?? null,
+        screen_public_url:
+          sa?.bucket && sa?.object_path
+            ? buildPublicUrl(sa.bucket, sa.object_path)
+            : null,
 
-      nav_name: nav?.name ?? null,
-      nav_public_url:
-        nav?.bucket && nav?.object_path
-          ? buildPublicUrl(nav.bucket, nav.object_path)
-          : null,
+        nav_name: nav?.name ?? null,
+        nav_public_url:
+          nav?.bucket && nav?.object_path
+            ? buildPublicUrl(nav.bucket, nav.object_path)
+            : null,
 
-      nav_content_width: nav?.content_width ?? null,
-      nav_content_height: nav?.content_height ?? null,
-      nav_pixel_ratio: nav?.pixel_ratio ?? null,
-    }
-  })
+        nav_content_width: nav?.content_width ?? null,
+        nav_content_height: nav?.content_height ?? null,
+        nav_pixel_ratio: nav?.pixel_ratio ?? null,
+      }
+    })
 
-  return rows
+    return rows
 }
