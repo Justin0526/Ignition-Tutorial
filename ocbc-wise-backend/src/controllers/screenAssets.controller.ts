@@ -45,3 +45,20 @@ export async function createScreenAssets(req: any, res: any){
         return res.status(500).json({ error: msg })
    }
 }
+
+export async function deleteScreenAsset(req: any, res: any) {
+    try {
+        const { screenAssetId } = req.params;
+
+        const result = await svc.deleteScreenAssetSafe(screenAssetId);
+
+        if (!result.ok) {
+        return res.status(result.status).json(result.body);
+        }
+
+        return res.sendStatus(result.status); // 204
+    } catch (err: any) {
+        return res.status(500).json({ error: err.message ?? "Server error" });
+    }
+}
+

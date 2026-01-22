@@ -91,20 +91,60 @@ async function insertTutorialVersion(
     return data
 }
 
-export async function createTutorialDraft(input: CreateTutorialDraftInput){
-    const tutorial = await insertTutorial(input);
+export async function createTutorialDraft(input: CreateTutorialDraftInput) {
+    let tutorial: TutorialRow
 
-    try{
+    try {
+        tutorial = await insertTutorial(input)
+    } catch (err: any) {
+        // Detect unique violation on tutorial.enquiry_category_id
+        const msg = String(err?.message ?? "")
+        const details = String(err?.details ?? "")
+        const code = String(err?.code ?? "")
+
+        const isUnique =
+        code === "23505" ||
+        msg.includes("duplicate key value") ||
+        details.includes("enquiry_category_id") ||
+        msg.includes("ux_") // if you named the index
+
+        if (isUnique) {
+        // Find existing tutorial for that category
+        const { data: existing, error: findErr } = await supabase
+            .from("tutorial")
+            .select("tutorial_id")
+            .eq("enquiry_category_id", input.enquiry_category_id)
+            .is("deleted_at", null)
+            .maybeSingle()
+
+        if (findErr) throw new Error(findErr.message)
+        if (existing?.tutorial_id) {
+            // throw a structured error your controller can convert to 409
+            const e = new Error("Tutorial already exists for this category.")
+            ;(e as any).code = "TUTORIAL_EXISTS"
+            ;(e as any).tutorial_id = existing.tutorial_id
+            throw e
+        }
+        }
+
+        throw err
+    }
+
+    try {
         const draft_version = await insertTutorialVersion({
-            tutorial_id: tutorial.tutorial_id,
-            version_number: 1,
-            status: "draft",
+        tutorial_id: tutorial.tutorial_id,
+        version_number: 1,
+        status: "draft",
         })
 
-        return { tutorial, draft_version};
-    } catch (err){
-        await supabase.from("tutorial").update({ deleted_at: new Date().toISOString() }).eq("tutorial_id", tutorial.tutorial_id);
-        throw err;
+        return { tutorial, draft_version }
+    } catch (err) {
+        await supabase
+        .from("tutorial")
+        .update({ deleted_at: new Date().toISOString() })
+        .eq("tutorial_id", tutorial.tutorial_id)
+
+        throw err
     }
 }
 
@@ -171,7 +211,10 @@ export async function getTutorialLibrary(params?: {search?: string; status?: Tut
     let q = supabase
         .from("tutorial_library_view")
         .select(
-        "tutorial_id,tutorial_name,estimated_time_sec,enquiry_category_id,enquiry_category_name,tutorial_created_at,latest_tutorial_version_id,latest_version_number,latest_status,latest_version_created_at"
+            "tutorial_id,tutorial_name,estimated_time_sec,enquiry_category_id,enquiry_category_name,tutorial_created_at," +
+            "latest_tutorial_version_id,latest_version_number,latest_status,latest_version_created_at," +
+            "published_tutorial_version_id,published_version_number,published_version_created_at," +
+            "draft_tutorial_version_id,draft_version_number,draft_version_created_at"
         )
         .order("latest_version_created_at", { ascending: false });
 
@@ -404,4 +447,72 @@ export async function discardDraft(input: {
     }
 
     return { action: "deleted_draft_only" as const }
+}
+
+type TutorialMetaRow = {
+    tutorial_id: string
+    name: string
+    estimated_time_sec: number | null
+    enquiry_category_id: string
+    enquiry_category?: { name: string } | { name: string }[] | null
+}
+
+function pickEnquiryCategoryName(v: TutorialMetaRow["enquiry_category"]): string | null {
+    if (!v) return null
+    if (Array.isArray(v)) return typeof v[0]?.name === "string" ? v[0].name : null
+    return typeof v.name === "string" ? v.name : null
+}
+
+export async function getTutorialMeta(input: { tutorial_id: string }) {
+    const { tutorial_id } = input
+
+    const { data, error } = await supabase
+        .from("tutorial")
+        .select(`
+        tutorial_id,
+        name,
+        estimated_time_sec,
+        enquiry_category_id,
+        enquiry_category:enquiry_category_id ( name )
+        `)
+        .eq("tutorial_id", tutorial_id)
+        .is("deleted_at", null)
+        .maybeSingle()
+
+    if (error) throw new Error(error.message)
+    if (!data) throw new Error("Tutorial not found")
+
+    const row = data as unknown as TutorialMetaRow
+
+    return {
+        tutorial_id: row.tutorial_id,
+        name: row.name,
+        estimated_time_sec: row.estimated_time_sec,
+        enquiry_category_id: row.enquiry_category_id,
+        enquiry_category_name: pickEnquiryCategoryName(row.enquiry_category),
+    }
+}
+
+export async function updateTutorialMeta(input: {
+    tutorial_id: string
+    name: string
+    estimated_time_sec: number | null
+    }) {
+    const { tutorial_id, name, estimated_time_sec } = input
+
+    const { data, error } = await supabase
+        .from("tutorial")
+        .update({
+        name,
+        estimated_time_sec,
+        })
+        .eq("tutorial_id", tutorial_id)
+        .is("deleted_at", null)
+        .select("tutorial_id, name, estimated_time_sec, enquiry_category_id, created_at")
+        .single()
+
+    if (error) throw new Error(error.message)
+    if (!data) throw new Error("Tutorial not found")
+
+    return data
 }

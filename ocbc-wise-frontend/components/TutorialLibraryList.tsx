@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
+import { useRouter } from "next/navigation"
 import { getTutorialLibrary, type TutorialLibraryRow } from "@/lib/api/tutorial"
 
 function getErrorMessage(e: unknown) {
@@ -15,6 +16,7 @@ export default function TutorialLibraryList(props: {
   status?: "draft" | "published" | "all"
 }) {
   const { onEdit } = props
+  const router = useRouter()
 
   const [rows, setRows] = useState<TutorialLibraryRow[]>([])
   const [loading, setLoading] = useState(true)
@@ -80,12 +82,45 @@ export default function TutorialLibraryList(props: {
             </p>
           </div>
 
+          {/* Button */}
+          <div className="flex items-center gap-2">
+          {t.published_tutorial_version_id && (
+            <button
+              type="button"
+              onClick={() =>
+                router.push(
+                  `/staff/tutorials/${t.tutorial_id}/preview?version=${t.published_tutorial_version_id}&mode=view`
+                )
+              }
+              className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
+            >
+              Preview published
+            </button>
+          )}
+
+          {t.draft_tutorial_version_id && (
+            <button
+              type="button"
+              onClick={() =>
+                router.push(
+                  `/staff/tutorials/${t.tutorial_id}/preview?version=${t.draft_tutorial_version_id}&mode=edit`
+                )
+              }
+              className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
+            >
+              Preview draft
+            </button>
+          )}
+
           <button
+            type="button"
             onClick={() => onEdit(t.tutorial_id)}
             className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
           >
             Edit workflow
           </button>
+        </div>
+
         </div>
       ))}
     </div>

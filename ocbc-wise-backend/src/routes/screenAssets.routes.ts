@@ -14,4 +14,7 @@ router.get("/navbar", ctrl.getAllNavBars)
 // POST /staff/screen-assets
 router.post("/", upload.single("file"), ctrl.createScreenAssets);
 
+// DELETE /staff/screen-assets/:screenAssetId
+router.delete("/:screenAssetId", ctrl.deleteScreenAsset);
+
 export default router

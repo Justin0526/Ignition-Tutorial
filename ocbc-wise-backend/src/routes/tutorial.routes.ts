@@ -18,5 +18,7 @@ router.post("/:tutorialId/resolve-edit", ctrl.resolveEditHandler);
 // POST /staff/tutorials/:tutorialId/discard-draft
 router.post("/:tutorialId/discard-draft", ctrl.discardDraftHandler)
 
+router.get("/:tutorialId/metadata", ctrl.getTutorialMeta)
+router.patch("/:tutorialId/metadata", ctrl.updateTutorialMeta)
 
 export default router;

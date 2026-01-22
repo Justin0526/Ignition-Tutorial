@@ -37,6 +37,9 @@ export default function TutorialPreviewClient() {
     const [publishOk, setPublishOk] = useState(false)
     const [isTipFlipped, setIsTipFlipped] = useState(false)
 
+    const [isCompleted, setIsCompleted] = useState(false)
+    const [runKey, setRunKey] = useState(0) // forces preview reset
+
     // Step 1 only for now
     const activeStep = useMemo(
         () => rows[currentStepIndex] ?? null,
@@ -48,16 +51,16 @@ export default function TutorialPreviewClient() {
     const [phoneWidth, setPhoneWidth] = useState(0)
 
     useEffect(() => {
-    if (!phoneFrameRef.current) return
-    const el = phoneFrameRef.current
+        if (!phoneFrameRef.current) return
+        const el = phoneFrameRef.current
 
-    const ro = new ResizeObserver((entries) => {
-        const w = entries[0]?.contentRect?.width ?? 0
-        setPhoneWidth(w)
-    })
+        const ro = new ResizeObserver((entries) => {
+            const w = entries[0]?.contentRect?.width ?? 0
+            setPhoneWidth(w)
+        })
 
-    ro.observe(el)
-    return () => ro.disconnect()
+        ro.observe(el)
+        return () => ro.disconnect()
     }, [])
 
     const navbarHeight =
@@ -68,26 +71,27 @@ export default function TutorialPreviewClient() {
             : 0
 
     useEffect(() => {
-    if (!tutorialVersionId) return
+        if (!tutorialVersionId) return
 
-    ;(async () => {
-        try {
-        setLoading(true)
-        setError(null)
-        const { steps } = await getTutorialSteps(tutorialVersionId)
-        console.log(steps);
-        setRows(steps ?? [])
-        } catch (e: unknown) {
-        setError(e instanceof Error ? e.message : "Failed to load steps")
-        } finally {
-        setLoading(false)
-        }
-    })()
+        ;(async () => {
+            try {
+                setLoading(true)
+                setError(null)
+                const { steps } = await getTutorialSteps(tutorialVersionId)
+                console.log(steps);
+                setRows(steps ?? [])
+            } catch (e: unknown) {
+                setError(e instanceof Error ? e.message : "Failed to load steps")
+            } finally {
+                setLoading(false)
+            }
+        })()
     }, [tutorialVersionId])
 
     useEffect(() => {
         setCurrentStepIndex(0)
-    }, [tutorialVersionId])
+        setIsCompleted(false)
+    }, [tutorialVersionId, runKey])
 
     useEffect(() => {
         const sp = activeStep?.scroll_progress ?? 0
@@ -119,6 +123,8 @@ export default function TutorialPreviewClient() {
     }
 
     function handlePhoneTap(e: React.MouseEvent<HTMLDivElement>) {
+        if (isCompleted) return
+
         if (!isTapEnabled) {
             return
         }
@@ -147,9 +153,16 @@ export default function TutorialPreviewClient() {
             y >= ty && y <= ty + th
 
         if (hit) {
-            // ✅ advance
-            setCurrentStepIndex((i) => Math.min(i + 1, rows.length - 1))
-        } else {
+            setCurrentStepIndex((i) => {
+                const next = i + 1
+                if (next >= rows.length) {
+                    setIsCompleted(true)
+                    return i
+                }
+                return next
+            })
+        }
+        else {
             // ❌ wrong tap
             triggerShake()
         }
@@ -171,6 +184,8 @@ export default function TutorialPreviewClient() {
     }
 
     useEffect(() => {
+        if (isCompleted) return
+
         // stop any previous animation
         currentAnimRef.current?.cancel()
         currentAnimRef.current = null
@@ -335,6 +350,17 @@ export default function TutorialPreviewClient() {
         }
     }
 
+    function handleRedoWorkflow() {
+        currentAnimRef.current?.cancel()
+        currentAnimRef.current = null
+
+        setIsCompleted(false)
+        setCurrentStepIndex(0)
+        setIsTapEnabled(true)
+        setIsTipFlipped(false)
+
+        setRunKey((k) => k + 1) // force reset effects
+    }
 
   return (
     <div className="w-full flex justify-center">
@@ -366,7 +392,17 @@ export default function TutorialPreviewClient() {
             `}</style>
 
           {/* Step Indicator */}
-          <TutorialBuilderSteps current={3} />
+          <TutorialBuilderSteps
+            current={3}
+            onStepClick={(step) => {
+                if (step === 3) return
+                if (step === 2) {
+                router.push(`/staff/tutorials/${tutorialId}/steps?version=${tutorialVersionId}`)
+                return
+                }
+                router.push(`/staff/tutorials/${tutorialId}/metadata?version=${tutorialVersionId}`)
+            }}
+            />
           <div className="h-px bg-slate-200" />
 
           {/* Body (placeholder for now) */}
@@ -481,105 +517,147 @@ export default function TutorialPreviewClient() {
                             </div>
                         )}
                         {/* Coachmark overlay (in-phone instructions) */}
-                        {activeStep?.instruction && !loading && !error && (
-                        <div className="absolute inset-0 z-30 pointer-events-none">
-                            {/* Optional dim backdrop (very "tutorial-ish") */}
-                            <div className="absolute inset-0 bg-black/25" />
+                        {activeStep?.instruction && !loading && !error && !isCompleted && (
+                            <div className="absolute inset-0 z-30 pointer-events-none">
+                                {/* Optional dim backdrop (very "tutorial-ish") */}
+                                <div className="absolute inset-0 bg-black/25" />
 
-                            {/* Instruction bubble */}
-                            {(() => {
-                            const pos = getCoachmarkPosition(activeStep)
-                            return (
-                                <div
-                                className="absolute px-4"
-                                style={{
-                                    left: pos.left,
-                                    top: pos.top,
-                                    transform:
-                                        pos.anchor === "center"
-                                        ? "translate(-50%, -50%)"
-                                        : pos.anchor === "left"
-                                        ? "translate(0, -50%)"
-                                        : "translate(-100%, -50%)",
-                                    width: "90%",
-                                    maxWidth: "260px",
-                                }}
-                                >
-                                <div className="rounded-2xl bg-white/95 shadow-lg ring-1 ring-black/5 px-3 py-3">
-                                    {(() => {
-                                        const tipText = (activeStep.tip ?? "").trim()
-                                        const hasTip = tipText.length > 0
+                                {/* Instruction bubble */}
+                                {(() => {
+                                const pos = getCoachmarkPosition(activeStep)
+                                return (
+                                    <div
+                                    className="absolute px-4"
+                                    style={{
+                                        left: pos.left,
+                                        top: pos.top,
+                                        transform:
+                                            pos.anchor === "center"
+                                            ? "translate(-50%, -50%)"
+                                            : pos.anchor === "left"
+                                            ? "translate(0, -50%)"
+                                            : "translate(-100%, -50%)",
+                                        width: "90%",
+                                        maxWidth: "260px",
+                                    }}
+                                    >
+                                    <div className="rounded-2xl bg-white/95 shadow-lg ring-1 ring-black/5 px-3 py-3">
+                                        {(() => {
+                                            const tipText = (activeStep.tip ?? "").trim()
+                                            const hasTip = tipText.length > 0
 
-                                        return (
-                                            <div
-                                            className="coachmark-3d"
-                                            // IMPORTANT: allow clicking this card only
-                                            style={{ pointerEvents: "auto" }}
-                                            onClick={(e) => {
-                                                if (!hasTip) return
-                                                e.stopPropagation() // prevent triggering handlePhoneTap
-                                                setIsTipFlipped((v) => !v)
-                                            }}
-                                            >
-                                            <div
-                                                className="coachmark-inner relative"
-                                                style={{
-                                                transition: "transform 450ms cubic-bezier(0.22, 0.61, 0.36, 1)",
-                                                transform: isTipFlipped ? "rotateY(180deg)" : "rotateY(0deg)",
+                                            return (
+                                                <div
+                                                className="coachmark-3d"
+                                                // IMPORTANT: allow clicking this card only
+                                                style={{ pointerEvents: "auto" }}
+                                                onClick={(e) => {
+                                                    if (!hasTip) return
+                                                    e.stopPropagation() // prevent triggering handlePhoneTap
+                                                    setIsTipFlipped((v) => !v)
                                                 }}
-                                            >
-                                                {/* FRONT: Instruction */}
-                                                <div className="coachmark-face rounded-xl bg-white/95 shadow-lg ring-1 ring-black/5 p-3">
-                                                <div className="text-xs font-extrabold tracking-widest text-slate-400">
-                                                    STEP {currentStepIndex + 1} OF {rows.length}
-                                                </div>
-
-                                                <div className="mt-2 text-[13px] font-medium text-slate-900">
-                                                    {activeStep.instruction}
-                                                </div>
-
-                                                {/* Hint only if there is a tip */}
-                                                {hasTip && !isTipFlipped && (
-                                                    <div className="mt-2 text-[11px] font-bold text-slate-400 text-right tracking-widest">
-                                                    CLICK ME
+                                                >
+                                                <div
+                                                    className="coachmark-inner relative"
+                                                    style={{
+                                                    transition: "transform 450ms cubic-bezier(0.22, 0.61, 0.36, 1)",
+                                                    transform: isTipFlipped ? "rotateY(180deg)" : "rotateY(0deg)",
+                                                    }}
+                                                >
+                                                    {/* FRONT: Instruction */}
+                                                    <div className="coachmark-face rounded-xl bg-white/95 shadow-lg ring-1 ring-black/5 p-3">
+                                                    <div className="text-xs font-extrabold tracking-widest text-slate-400">
+                                                        STEP {currentStepIndex + 1} OF {rows.length}
                                                     </div>
-                                                )}
-                                                </div>
 
-                                                {/* BACK: Tip */}
-                                                <div className="coachmark-face coachmark-back absolute inset-0 rounded-xl bg-white/95 shadow-lg ring-1 ring-black/5 p-3">
-                                                <div className="text-xs font-extrabold tracking-widest text-slate-400">
-                                                    TIP
-                                                </div>
+                                                    <div className="mt-2 text-[13px] font-medium text-slate-900">
+                                                        {activeStep.instruction}
+                                                    </div>
 
-                                                <div className="mt-2 text-[13px] font-medium text-slate-900">
-                                                    {tipText}
-                                                </div>
+                                                    {/* Hint only if there is a tip */}
+                                                    {hasTip && !isTipFlipped && (
+                                                        <div className="mt-2 text-[11px] font-bold text-slate-400 text-right tracking-widest">
+                                                        CLICK ME
+                                                        </div>
+                                                    )}
+                                                    </div>
 
-                                                <div className="mt-2 text-[11px] font-bold text-slate-400 text-right tracking-widest">
-                                                    TAP TO GO BACK
-                                                </div>
-                                                </div>
-                                            </div>
-                                            </div>
-                                        )
-                                    })()}
+                                                    {/* BACK: Tip */}
+                                                    <div className="coachmark-face coachmark-back absolute inset-0 rounded-xl bg-white/95 shadow-lg ring-1 ring-black/5 p-3">
+                                                    <div className="text-xs font-extrabold tracking-widest text-slate-400">
+                                                        TIP
+                                                    </div>
 
-                                </div>
-                                </div>
-                            )
-                            })()}
-                        </div>
+                                                    <div className="mt-2 text-[13px] font-medium text-slate-900">
+                                                        {tipText}
+                                                    </div>
+
+                                                    <div className="mt-2 text-[11px] font-bold text-slate-400 text-right tracking-widest">
+                                                        TAP TO GO BACK
+                                                    </div>
+                                                    </div>
+                                                </div>
+                                                </div>
+                                            )
+                                        })()}
+
+                                    </div>
+                                    </div>
+                                )
+                                })()}
+                            </div>
                         )}
-                        </div>
 
-                        </div>
+                        {isCompleted && !loading && !error && (
+                            <div className="absolute inset-0 z-40 flex items-center justify-center">
+                                {/* dark backdrop */}
+                                <div className="absolute inset-0 bg-black/35" />
+
+                                {/* centered card */}
+                                <div
+                                className="relative w-[85%] max-w-[260px] rounded-2xl bg-white/95 shadow-lg ring-1 ring-black/5 px-4 py-4"
+                                style={{ pointerEvents: "auto" }}
+                                onClick={(e) => e.stopPropagation()} // prevent triggering handlePhoneTap
+                                >
+                                <div className="text-xs font-extrabold tracking-widest text-slate-400 text-center">
+                                    DONE
+                                </div>
+
+                                <div className="mt-2 text-base font-semibold text-slate-900 text-center">
+                                    Tutorial completed 🎉
+                                </div>
+
+                                <div className="mt-4 flex justify-center">
+                                    <button
+                                    type="button"
+                                    onClick={handleRedoWorkflow}
+                                    className="rounded-xl bg-slate-900 px-6 py-2.5 text-sm font-semibold text-white hover:bg-slate-800"
+                                    >
+                                    Redo workflow
+                                    </button>
+                                </div>
+                                </div>
+                            </div>
+                        )}
+
+                       </div>
+
+                      </div>
                     </div>
                     {activeStep && isNoTapStep(activeStep) && currentStepIndex < rows.length - 1 && (
                         <div className="mt-6 flex justify-center">
                             <button
                             type="button"
-                            onClick={() => setCurrentStepIndex((i) => i + 1)}
+                            onClick={() =>
+                                setCurrentStepIndex((i) => {
+                                    const next = i + 1
+                                    if (next >= rows.length) {
+                                        setIsCompleted(true)
+                                        return i
+                                    }
+                                    return next
+                                })
+                            }
                             className="rounded-xl bg-slate-900 px-8 py-3 text-sm font-semibold text-white hover:bg-slate-800"
                             >
                             Next

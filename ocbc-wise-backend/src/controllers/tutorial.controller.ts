@@ -18,6 +18,14 @@ export async function createTutorialDraftHandler(req: Request, res: Response){
 
         return res.status(201).json(result);
     } catch (err: any){
+        if (err?.code === "TUTORIAL_EXISTS") {
+            return res.status(409).json({
+            error: err.message,
+            code: "TUTORIAL_EXISTS",
+            tutorial_id: err.tutorial_id,
+            })
+        }
+        
         // duplicate tutorial name in same category
         if (isPostgresUniqueViolation(err)){
             return res.status(409).json({ error: "A tutorial with the same name already exists in this category."});
@@ -110,3 +118,56 @@ export async function discardDraftHandler(req: Request, res: Response) {
         return res.status(500).json({ error: msg })
     }
 }
+
+export async function getTutorialMeta(req: Request, res: Response) {
+  try {
+    const tutorialId = req.params.tutorialId
+    const data = await svc.getTutorialMeta({ tutorial_id: tutorialId })
+    return res.status(200).json(data)
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : "Server error"
+        // If you prefer: detect not found by message
+    if (message.toLowerCase().includes("not found")) {
+            return res.status(404).json({ error: message })
+    }
+    return res.status(500).json({ error: message })
+  }
+}
+
+export async function updateTutorialMeta(req: Request, res: Response) {
+    try {
+        const tutorialId = req.params.tutorialId
+        const { name, estimated_time_sec } = req.body as {
+            name?: string
+            estimated_time_sec?: number
+        }
+
+        if (typeof name !== "string" || !name.trim()) {
+            return res.status(400).json({ error: "name is required" })
+        }
+
+        let time: number | null = null
+        if (estimated_time_sec !== undefined) {
+            if (typeof estimated_time_sec !== "number" || !Number.isFinite(estimated_time_sec) || estimated_time_sec < 0) {
+                return res.status(400).json({ error: "estimated_time_sec must be a non-negative number" })
+            }
+            time = estimated_time_sec
+        }
+
+        const data = await svc.updateTutorialMeta({
+            tutorial_id: tutorialId,
+            name: name.trim(),
+            estimated_time_sec: time,
+        })
+
+        return res.status(200).json(data)
+    }  catch (err: unknown) {
+        const message = err instanceof Error ? err.message : "Server error"
+        // If you prefer: detect not found by message
+        if (message.toLowerCase().includes("not found")) {
+            return res.status(404).json({ error: message })
+        }
+        return res.status(500).json({ error: message })
+    }
+}
+

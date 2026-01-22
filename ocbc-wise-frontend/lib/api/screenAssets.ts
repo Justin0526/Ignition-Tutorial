@@ -70,3 +70,42 @@ export async function createScreenAsset(input: CreateScreenAssetInput):Promise<S
     return res.json()
 }
 
+type DeleteScreenAssetErrorBody =
+  | {
+      error: "SCREEN_ASSET_IN_USE";
+      message: string;
+      used_step_count: number;
+    }
+  | {
+      error: "SCREEN_ASSET_NOT_FOUND";
+      message: string;
+    }
+  | {
+      error?: string;
+      message?: string;
+    };
+
+export async function deleteScreenAsset(screenAssetId: string): Promise<void> {
+  const res = await fetch(`${BASE}/staff/screen-assets/${screenAssetId}`, {
+    method: "DELETE",
+  });
+
+  if (res.status === 204) return;
+
+  let body: DeleteScreenAssetErrorBody = {};
+  try {
+    body = (await res.json()) as DeleteScreenAssetErrorBody;
+  } catch {
+    // ignore
+  }
+
+  const err = new Error(body?.message || `Delete failed (${res.status})`) as Error & {
+    status?: number;
+    body?: DeleteScreenAssetErrorBody;
+  };
+
+  err.status = res.status;
+  err.body = body;
+
+  throw err;
+}

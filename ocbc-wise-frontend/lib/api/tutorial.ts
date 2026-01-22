@@ -1,17 +1,25 @@
 const BASE = process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/$/, "") || "http://localhost:5001"
 
-async function fetchJSON<T>(path: string, options?: RequestInit): Promise<T> {
+class ApiError extends Error {
+    status: number
+    body: unknown
+
+    constructor(message: string, status: number, body: unknown) {
+        super(message)
+        this.name = "ApiError"
+        this.status = status
+        this.body = body
+    }
+}
+
+export async function fetchJSON<T>(path: string, options?: RequestInit): Promise<T> {
     const res = await fetch(`${BASE}${path}`, {
         cache: "no-store",
         ...options,
-    });
+    })
 
-    if (!res.ok) {
-        const errorBody = await res.json().catch(() => ({}));
-        throw new Error(errorBody.error || `API error ${res.status}`);
-    }
-
-    return res.json();
+    const body: unknown = await res.json().catch(() => ({}))
+    return body as T
 }
 
 
@@ -74,14 +82,22 @@ export async function publishTutorial(input: {tutorial_version_id:string, tutori
 export type TutorialLibraryRow = {
     tutorial_id: string;
     tutorial_name: string;
-    estimated_time_sec: number;
+    estimated_time_sec: number | null;
     enquiry_category_id: string;
     enquiry_category_name: string;
     tutorial_created_at: string;
 
+    published_tutorial_version_id: string | null
+    published_version_number: number | null
+    published_version_created_at: string | null
+
+    draft_tutorial_version_id: string | null
+    draft_version_number: number | null
+    draft_version_created_at: string | null
+
     latest_tutorial_version_id: string;
     latest_version_number: number;
-    latest_status: "draft" | "published";
+    latest_status: "draft" | "published" | "archived";
     latest_version_created_at: string;
 };
 
@@ -152,4 +168,24 @@ export async function resolveEditableVersionServer(tutorialId: string) {
     }
 
     return res.json() as Promise<{ tutorial_version_id: string; action?: string }>
+}
+
+export type TutorialMeta = {
+    tutorial_id: string
+    name: string
+    estimated_time_sec: number | null
+    enquiry_category_id: string
+    enquiry_category_name: string 
+}
+
+export async function getTutorialMeta(tutorialId: string) {
+    return fetchJSON<TutorialMeta>(`/staff/tutorials/${tutorialId}/metadata`)
+}
+
+export async function updateTutorialMeta(tutorialId: string, input: { name: string; estimated_time_sec: number | null }) {
+    return fetchJSON<TutorialMeta>(`/staff/tutorials/${tutorialId}/metadata`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(input),
+    })
 }

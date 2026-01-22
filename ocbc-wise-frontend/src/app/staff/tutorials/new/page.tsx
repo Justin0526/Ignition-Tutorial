@@ -1,5 +1,5 @@
 // src/app/staff/tutorials/new/page.tsx
-import TutorialMetadataForm from "./TutorialMetadataFrom"
+import TutorialMetadataForm from "./TutorialMetadataForm"
 import { getEnquiryCategories, createTutorialDraft } from "@/lib/api/tutorial"
 import { redirect } from "next/navigation"
 

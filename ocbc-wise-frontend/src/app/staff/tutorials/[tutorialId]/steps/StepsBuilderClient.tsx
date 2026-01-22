@@ -69,6 +69,10 @@ export default function StepsBuilderClient() {
   const tutorialId = params.tutorialId
   const tutorialVersionId = searchParams.get("version") ?? ""
 
+  const [isDirty, setIsDirty] = useState(false)
+  const [showUnsavedModal, setShowUnsavedModal] = useState(false)
+  const [pendingNavStep, setPendingNavStep] = useState<1 | 2 | 3 | null>(null)
+
   const [saveError, setSaveError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
 
@@ -168,64 +172,68 @@ export default function StepsBuilderClient() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeIndex, activeStepId])
 
+  async function refetchAndHydrateSteps() {
+    if (!tutorialVersionId) return
+
+    const { steps: rows } = await getTutorialSteps(tutorialVersionId)
+
+    const hydrated: Step[] = rows.map((r) => {
+      const hasTarget =
+        r.target_x != null &&
+        r.target_y != null &&
+        r.target_w != null &&
+        r.target_h != null
+
+      const actionType: ActionType = !hasTarget
+        ? "no_tap"
+        : r.scroll_progress > 0
+          ? "scroll_then_tap"
+          : "direct_tap"
+
+      const screen: ScreenAsset | null =
+        r.screen_public_url && r.screen_name
+          ? ({
+              screen_asset_id: r.screen_asset_id,
+              name: r.screen_name,
+              public_url: r.screen_public_url,
+            } as ScreenAsset)
+          : null
+
+      return {
+        id: r.tutorial_step_id,
+        title: r.instruction?.trim() ? r.instruction.trim() : "(Untitled Step)",
+        isSaved: true,
+        target: hasTarget
+          ? {
+              x: r.target_x!,
+              y: r.target_y!,
+              w: r.target_w!,
+              h: r.target_h!,
+              isNav: r.is_nav_target ?? false,
+            }
+          : null,
+        draft: {
+          instruction: r.instruction ?? "",
+          tip: r.tip ?? "",
+          actionType,
+          scrollProgress: r.scroll_progress ?? 0,
+          nav_key: r.nav_key ?? "",
+          screen,
+        },
+      }
+    })
+
+    setSteps(hydrated)
+    setActiveIndex(0)
+    if (hydrated[0]) loadStepToForm(hydrated[0])
+  }
+
   useEffect(() => {
     if (!tutorialVersionId) return
 
     ;(async () => {
       try {
-        const { steps: rows } = await getTutorialSteps(tutorialVersionId)
-
-        const hydrated: Step[] = rows.map((r) => {
-          const hasTarget =
-            r.target_x != null &&
-            r.target_y != null &&
-            r.target_w != null &&
-            r.target_h != null
-
-          const actionType: ActionType = !hasTarget
-            ? "no_tap"
-            : r.scroll_progress > 0
-              ? "scroll_then_tap"
-              : "direct_tap"
-
-          const screen: ScreenAsset | null =
-            r.screen_public_url && r.screen_name
-              ? ({
-                  screen_asset_id: r.screen_asset_id,
-                  name: r.screen_name,
-                  public_url: r.screen_public_url,
-                } as ScreenAsset)
-              : null
-
-          return {
-            id: r.tutorial_step_id,
-            title: r.instruction?.trim() ? r.instruction.trim() : "(Untitled Step)",
-            isSaved: true,
-            target: hasTarget
-              ? {
-                  x: r.target_x!,
-                  y: r.target_y!,
-                  w: r.target_w!,
-                  h: r.target_h!,
-                  isNav: r.is_nav_target ?? false,
-                }
-              : null,
-            draft: {
-              instruction: r.instruction ?? "",
-              tip: r.tip ?? "",
-              actionType,
-              scrollProgress: r.scroll_progress ?? 0,
-              nav_key: r.nav_key ?? "",
-              screen,
-            },
-          }
-        })
-
-        setSteps(hydrated)
-        setActiveIndex(0)
-
-        // load first step into the form
-        if (hydrated[0]) loadStepToForm(hydrated[0])
+        await refetchAndHydrateSteps()
       } catch (e) {
         // optional: console.error(e)
       }
@@ -336,7 +344,7 @@ export default function StepsBuilderClient() {
     setScrollProgress(step.draft.scrollProgress ?? 0)
     setSelectedNavKey(step.draft.nav_key ?? "")
     setSelectedScreen(step.draft.screen ?? null)
-
+    setIsDirty(false)
   }
 
   async function handleSaveStep() {
@@ -611,6 +619,7 @@ export default function StepsBuilderClient() {
    try {
       await syncTutorialSteps({ tutorial_version_id: tutorialVersionId, steps: payloadSteps })
       setSteps((prev) => prev.map((s) => ({ ...s, isSaved: true })))
+      setIsDirty(false)
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : "Failed to sync after delete."
       setSaveError(msg)
@@ -644,17 +653,105 @@ export default function StepsBuilderClient() {
     }
   }
 
+  function stepToUrl(step: 1 | 2 | 3) {
+    if (step === 1) return `/staff/tutorials/${tutorialId}/metadata?version=${tutorialVersionId}`
+    if (step === 2) return `/staff/tutorials/${tutorialId}/steps?version=${tutorialVersionId}`
+    return `/staff/tutorials/${tutorialId}/preview?version=${tutorialVersionId}`
+  }
+
+  function handleTopNav(step: 1 | 2 | 3) {
+    // already on steps
+    if (step === 2) return
+
+    if (isDirty) {
+      setPendingNavStep(step)
+      setShowUnsavedModal(true)
+      return
+    }
+
+    router.push(stepToUrl(step))
+  }
+
+  
   return (
     <div className="w-full flex justify-center">
       <div className="w-full max-w-6xl">
           <div className="relative">
+
+            {showUnsavedModal && (
+              <div className="fixed inset-0 z-50 flex items-center justify-center">
+                <div className="absolute inset-0 bg-black/40" />
+
+                <div className="relative w-[92%] max-w-md rounded-2xl bg-white p-5 shadow-xl ring-1 ring-black/5">
+                  <div className="text-base font-semibold text-slate-900">
+                    You have unsaved changes
+                  </div>
+                  <div className="mt-2 text-sm text-slate-600">
+                    If you continue without saving, your latest edits may be lost.
+                  </div>
+
+                  <div className="mt-5 flex items-center justify-end gap-2">
+                    <button
+                      type="button"
+                      className="rounded-lg px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100"
+                      onClick={() => {
+                        setShowUnsavedModal(false)
+                        setPendingNavStep(null)
+                      }}
+                    >
+                      Cancel
+                    </button>
+
+                    <button
+                      type="button"
+                      className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+                      onClick={async () => {
+                        // Discard & Continue = refetch steps + clear dirty, then navigate
+                        setShowUnsavedModal(false)
+                        setIsDirty(false)
+
+                        // IMPORTANT: use your existing "initial fetch + hydrate steps" logic here.
+                        // Extract that logic into a function called `refetchAndHydrateSteps()` and call it here.
+                        await refetchAndHydrateSteps()
+
+                        const target = pendingNavStep
+                        setPendingNavStep(null)
+                        if (target) router.push(stepToUrl(target))
+                      }}
+                    >
+                      Discard & Continue
+                    </button>
+
+                    <button
+                      type="button"
+                      className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800"
+                      onClick={async () => {
+                        const target = pendingNavStep
+                        try {
+                          await saveDraftSync()
+                          setShowUnsavedModal(false)
+                          setPendingNavStep(null)
+                          if (target) router.push(stepToUrl(target))
+                        } catch {
+                          // saveDraftSync already sets saveError
+                          // keep modal open so user can see error or close
+                        }
+                      }}
+                    >
+                      Save & Continue
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
             <div
               className={[
                 "rounded-2xl bg-white shadow-sm ring-1 ring-slate-200 overflow-hidden",
                 showSaved ? "blur-sm pointer-events-none select-none" : "",
               ].join(" ")}
             >
-              <TutorialBuilderSteps current={2} />
+              <TutorialBuilderSteps current={2} onStepClick={handleTopNav} />
               <div className="h-px bg-slate-200" />
 
               {/* Main 3-column builder */}
@@ -767,6 +864,7 @@ export default function StepsBuilderClient() {
                                   onChange={(e) => {
                                     setInstruction(e.target.value)
                                     markActiveStepUnsaved()
+                                    setIsDirty(true)
                                   }}
                                   placeholder="Explain the action..."
                                   className="mt-3 w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-slate-900 outline-none focus:border-slate-400"
@@ -786,6 +884,7 @@ export default function StepsBuilderClient() {
                                       onChange={(e) => {
                                         setActionType(e.target.value as ActionType)
                                         markActiveStepUnsaved()
+                                        setIsDirty(true)
                                       }}
                                       className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-slate-900 outline-none focus:border-slate-400"
                                     >
@@ -813,6 +912,7 @@ export default function StepsBuilderClient() {
                                             onChange={(e) => {
                                               setScrollProgress(Number(e.target.value) / 100)
                                               markActiveStepUnsaved()
+                                              setIsDirty(true)
                                             }}
                                             className="w-full"
                                           />
@@ -857,6 +957,7 @@ export default function StepsBuilderClient() {
                                   onChange={(e) => {
                                     setTip(e.target.value)
                                     markActiveStepUnsaved()
+                                    setIsDirty(true)
                                   }}
                                   placeholder="Detail how to help a struggling user..."
                                   className="mt-3 w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-slate-900 outline-none focus:border-slate-400 min-h-[120px] resize-none"
@@ -993,6 +1094,7 @@ export default function StepsBuilderClient() {
                             onChange={(e) => {
                               setSelectedNavKey(e.target.value)
                               markActiveStepUnsaved()
+                              setIsDirty(true)
                             }}
                             className="mt-3 w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-slate-900 outline-none focus:border-slate-400"
                           >

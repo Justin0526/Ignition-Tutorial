@@ -12,16 +12,17 @@ type CreateScreenAssetInput = {
 };
 
 type ScreenAssetRow = {
-    screen_asset_id: string;
-    name: string;
-    bucket: string;
-    object_path: string;
-    content_width: number;
-    content_height: number;
-    pixel_ratio: number;
-    original_width: number;
-    original_height: number;
-    created_at: string;
+  screen_asset_id: string;
+  name: string;
+  bucket: string;
+  object_path: string;
+  content_width: number;
+  content_height: number;
+  pixel_ratio: number;
+  original_width: number;
+  original_height: number;
+  created_at: string;
+  deleted_at: string | null; 
 };
 
 type NavBarAssetRow = {
@@ -49,15 +50,25 @@ export async function getAllScreenAssets() {
     const { data, error } = await supabase
         .from("screen_asset")
         .select(
-        "screen_asset_id,name,bucket,object_path,content_width,content_height,pixel_ratio,original_width,original_height,created_at"
+        "screen_asset_id,name,bucket,object_path,content_width,content_height,pixel_ratio,original_width,original_height,created_at,deleted_at"
         )
-        .returns<ScreenAssetRow[]>(); // ✅ key line
+        .is("deleted_at", null) // ✅ hide soft-deleted
+        .returns<ScreenAssetRow[]>();
 
     if (error) throw new Error(error.message);
 
-    const rows = data ?? []; // ✅ data can be null
+    const rows = data ?? [];
     return rows.map((row) => ({
-        ...row,
+        screen_asset_id: row.screen_asset_id,
+        name: row.name,
+        bucket: row.bucket,
+        object_path: row.object_path,
+        content_width: row.content_width,
+        content_height: row.content_height,
+        pixel_ratio: row.pixel_ratio,
+        original_width: row.original_width,
+        original_height: row.original_height,
+        created_at: row.created_at,
         public_url: buildPublicUrl(row.bucket, row.object_path),
     }));
 }
@@ -159,4 +170,60 @@ export async function createScreenAsset(input: CreateScreenAssetInput) {
         ...inserted,
         public_url: buildPublicUrl(inserted.bucket, inserted.object_path),
     }
+}
+
+export async function deleteScreenAssetSafe(screenAssetId: string) {
+    // 1) Ensure asset exists (and check if already deleted)
+    const { data: asset, error: assetErr } = await supabase
+        .from("screen_asset")
+        .select("screen_asset_id, deleted_at")
+        .eq("screen_asset_id", screenAssetId)
+        .maybeSingle();
+
+    if (assetErr) throw new Error(assetErr.message);
+
+    if (!asset) {
+        return {
+        ok: false as const,
+        status: 404,
+        body: { error: "SCREEN_ASSET_NOT_FOUND", message: "Screen asset not found." },
+        };
+    }
+
+    if (asset.deleted_at) {
+        // idempotent delete
+        return { ok: true as const, status: 204 };
+    }
+
+    // 2) Usage check (authoritative)
+    const { count, error: usageErr } = await supabase
+        .from("tutorial_step")
+        .select("tutorial_step_id", { count: "exact", head: true })
+        .eq("screen_asset_id", screenAssetId);
+
+    if (usageErr) throw new Error(usageErr.message);
+
+    if ((count ?? 0) > 0) {
+        return {
+        ok: false as const,
+        status: 409,
+        body: {
+            error: "SCREEN_ASSET_IN_USE",
+            message:
+            "This screen is used in one or more tutorial steps and cannot be deleted.",
+            used_step_count: count ?? 0,
+        },
+        };
+    }
+
+    // 3) Soft delete
+    const { error: delErr } = await supabase
+        .from("screen_asset")
+        .update({ deleted_at: new Date().toISOString() })
+        .eq("screen_asset_id", screenAssetId)
+        .is("deleted_at", null);
+
+    if (delErr) throw new Error(delErr.message);
+
+    return { ok: true as const, status: 204 };
 }
