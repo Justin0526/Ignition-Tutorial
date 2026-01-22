@@ -15,4 +15,8 @@ router.get("/library", ctrl.getTutorialLibraryHandler);
 // POST /staff/tutorials/:tutorialId/resolve-edit
 router.post("/:tutorialId/resolve-edit", ctrl.resolveEditHandler);
 
+// POST /staff/tutorials/:tutorialId/discard-draft
+router.post("/:tutorialId/discard-draft", ctrl.discardDraftHandler)
+
+
 export default router;

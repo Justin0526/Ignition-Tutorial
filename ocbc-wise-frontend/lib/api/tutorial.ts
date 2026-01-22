@@ -118,5 +118,38 @@ export async function resolveEditTutorial(tutorialId: string): Promise<{
     return res.json();
 }
 
+export async function discardDraft(input: { tutorial_id: string; tutorial_version_id: string }) {
+    const res = await fetch(`${BASE}/staff/tutorials/${input.tutorial_id}/discard-draft`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        cache: "no-store",
+        body: JSON.stringify({ tutorial_version_id: input.tutorial_version_id }),
+    })
 
+    if (!res.ok) {
+        const errorBody = await res.json().catch(() => ({}))
+        throw new Error(errorBody.error || `API error ${res.status}`)
+    }
 
+    return res.json() as Promise<{ action: "deleted_tutorial_and_draft" | "deleted_draft_only" }>
+}
+
+export async function resolveEditableVersionServer(tutorialId: string) {
+    const res = await fetch(`${BASE}/staff/tutorials/${tutorialId}/resolve-edit`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ tutorial_id: tutorialId }),
+        cache: "no-store",
+    })
+
+    if (!res.ok) {
+        let msg = `resolve-edit failed (${res.status})`
+        try {
+        const body = await res.json()
+        if (body?.error) msg += `: ${body.error}`
+        } catch {}
+        throw new Error(msg)
+    }
+
+    return res.json() as Promise<{ tutorial_version_id: string; action?: string }>
+}

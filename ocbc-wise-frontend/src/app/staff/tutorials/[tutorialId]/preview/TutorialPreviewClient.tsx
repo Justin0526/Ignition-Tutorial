@@ -6,8 +6,11 @@ import { useSearchParams } from "next/navigation"
 import { getTutorialSteps, type TutorialStepRow } from "@/lib/api/tutorialSteps"
 import { useParams } from "next/navigation"
 import { publishTutorial } from "@/lib/api/tutorial" 
+import { discardDraft } from "@/lib/api/tutorial"
+import { useRouter } from "next/navigation";
 
 export default function TutorialPreviewClient() {
+    const router = useRouter();
     const SCROLL_DOWN_MS = 1600
     const PAUSE_BOTTOM_MS = 2000
     const SCROLL_UP_MS = 1200
@@ -162,6 +165,11 @@ export default function TutorialPreviewClient() {
         )
     }
 
+    function handleSaveAsDraft() {
+        router.replace("/staff/tutorials/library")
+        router.refresh()
+    }
+
     useEffect(() => {
         // stop any previous animation
         currentAnimRef.current?.cancel()
@@ -313,6 +321,20 @@ export default function TutorialPreviewClient() {
             anchor: "center" as const,
         }
     }
+
+    async function handleDiscard() {
+        if (!tutorialVersionId) return // or show error
+
+        try {
+            await discardDraft({ tutorial_id: params.tutorialId, tutorial_version_id: tutorialVersionId })
+            router.replace("/staff/tutorials/library")
+            router.refresh()
+        } catch (e) {
+            console.error(e)
+            // set error UI if you want
+        }
+    }
+
 
   return (
     <div className="w-full flex justify-center">
@@ -578,7 +600,7 @@ export default function TutorialPreviewClient() {
             <button
               type="button"
               className="text-sm font-semibold text-slate-500 hover:text-slate-700"
-              onClick={() => {}}
+              onClick={handleDiscard}
             >
               DISCARD BUILD
             </button>
@@ -588,7 +610,7 @@ export default function TutorialPreviewClient() {
               <button
                 type="button"
                 className="rounded-xl border border-slate-200 px-6 py-3 text-sm font-semibold text-slate-700 hover:bg-slate-50"
-                onClick={() => {}}
+                onClick={handleSaveAsDraft}
               >
                 Save as draft
               </button>

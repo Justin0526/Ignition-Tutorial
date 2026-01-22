@@ -43,7 +43,7 @@ export async function upsertTutorialStep(
     input: UpsertStepInput
     ): Promise<TutorialStep> {
     return fetchJSON(
-        `/staff/tutorial-versions/${tutorial_version_id}/steps/${step_index}`,
+        `/staff/tutorial-steps/${tutorial_version_id}/steps/${step_index}`,
         {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
@@ -83,5 +83,37 @@ export type TutorialStepRow = {
 export async function getTutorialSteps(
     tutorialVersionId: string
     ): Promise<{ steps: TutorialStepRow[] }> {
-    return fetchJSON(`/staff/tutorial-versions/${tutorialVersionId}/steps`)
+    return fetchJSON(`/staff/tutorial-steps/${tutorialVersionId}/steps`)
+}
+
+export type SyncTutorialStepInput = {
+    step_index: number
+    screen_asset_id: string
+    nav_key: string
+    instruction: string
+    tip: string | null
+    scroll_progress: number
+    target_x: number | null
+    target_y: number | null
+    target_w: number | null
+    target_h: number | null
+    is_nav_target: boolean | null
+}
+
+export async function syncTutorialSteps(input: {
+    tutorial_version_id: string
+    steps: SyncTutorialStepInput[]
+    }) {
+    const res = await fetch(`${BASE}/staff/tutorial-steps/sync`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(input),
+    })
+
+    if (!res.ok) {
+        const errorBody = await res.json().catch(() => ({}))
+        throw new Error(errorBody.error || `API error ${res.status}`)
+    }
+
+    return res.json()
 }

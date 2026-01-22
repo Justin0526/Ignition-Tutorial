@@ -1,5 +1,4 @@
 import { supabase } from "../lib/supabase.js"
-import { getTutorialStepsByVersion } from "./tutorialStep.service.js"
 
 export type CreateTutorialDraftInput = {
     name: string,
@@ -18,14 +17,14 @@ type TutorialRow = {
 type InsertTutorialVersionInput = {
     tutorial_id: string;
     version_number: number;
-    status: "draft" | "published";
+    status: "draft" | "published" | "archived";
 }
 
 type TutorialVersionRow = {
     tutorial_version_id: string;
     tutorial_id: string;
     version_number: number;
-    status: "draft" | "published";
+    status: "draft" | "published" | "archived";
     created_at: string;
 };
 
@@ -46,21 +45,50 @@ async function insertTutorial(input: CreateTutorialDraftInput): Promise<Tutorial
     return data;
 };
 
-async function insertTutorialVersion(input: InsertTutorialVersionInput): Promise<TutorialVersionRow>{
+async function insertTutorialVersion(
+    input: InsertTutorialVersionInput
+    ): Promise<TutorialVersionRow> {
     const { data, error } = await supabase
         .from("tutorial_version")
-        .insert([
-            {
-                tutorial_id: input.tutorial_id,
-                version_number: input.version_number,
-                status: input.status,
-            },
-        ])
+        .insert([{
+        tutorial_id: input.tutorial_id,
+        version_number: input.version_number,
+        status: input.status,
+        }])
         .select("tutorial_version_id, tutorial_id, version_number, status, created_at")
         .single()
 
-    if (error) throw error;
-    return data;
+    if (error) {
+        // ✅ Draft is unique per tutorial, handle race safely
+        if (input.status === "draft") {
+        const anyErr = error as any
+        const msg = String(anyErr?.message ?? "")
+        const details = String(anyErr?.details ?? "")
+        const isUnique =
+            anyErr?.code === "23505" ||
+            msg.includes("duplicate key value") ||
+            msg.includes("ux_tutorial_one_draft") ||
+            details.includes("ux_tutorial_one_draft")
+
+        if (isUnique) {
+            const draftNow = await getLatestDraftVersion(input.tutorial_id)
+            if (draftNow) {
+            // Return shape must match TutorialVersionRow
+            return {
+                tutorial_version_id: draftNow.tutorial_version_id,
+                tutorial_id: input.tutorial_id,
+                version_number: draftNow.version_number,
+                status: draftNow.status,
+                created_at: draftNow.created_at,
+            } as TutorialVersionRow
+            }
+        }
+        }
+
+        throw error
+    }
+
+    return data
 }
 
 export async function createTutorialDraft(input: CreateTutorialDraftInput){
@@ -75,7 +103,7 @@ export async function createTutorialDraft(input: CreateTutorialDraftInput){
 
         return { tutorial, draft_version};
     } catch (err){
-        await supabase.from("tutorial").delete().eq("tutorial_id", tutorial.tutorial_id);
+        await supabase.from("tutorial").update({ deleted_at: new Date().toISOString() }).eq("tutorial_id", tutorial.tutorial_id);
         throw err;
     }
 }
@@ -90,22 +118,23 @@ export async function publishTutorialVersion(input: PublishTutorialInput) {
     if (!tutorial_version_id) throw new Error("tutorial_version_id is required")
     if (!tutorial_id) throw new Error("tutorial_id is required")
 
-    // Unpublish any other published version for this tutorial
-    const { error: unpublishErr } = await supabase
+    // Archive any currently published version (excluding the target)
+    const { error: archiveErr } = await supabase
     .from("tutorial_version")
-    .update({ status: "draft" })
+    .update({ status: "archived" })
     .eq("tutorial_id", tutorial_id)
     .eq("status", "published")
-    .neq("tutorial_version_id", tutorial_version_id); // neq means unpublish all published versions for this tutorial except the one I'm publishing
+    .is("deleted_at", null)
+    .neq("tutorial_version_id", tutorial_version_id)
 
-    if (unpublishErr) throw new Error(unpublishErr.message);
-
+    if (archiveErr) throw new Error(archiveErr.message)
 
     const { data, error } = await supabase
         .from("tutorial_version")
         .update({ status: "published" })
         .eq("tutorial_version_id", tutorial_version_id)
         .eq("tutorial_id", tutorial_id)
+        .is("deleted_at", null)
         .select(
         `
         tutorial_version_id,
@@ -115,7 +144,7 @@ export async function publishTutorialVersion(input: PublishTutorialInput) {
         created_at
         `
         )
-        .single()
+        .single()       
 
     if (error) throw new Error(error.message)
     if (!data) throw new Error("Tutorial version not found (or tutorial_id mismatch)")
@@ -133,7 +162,7 @@ export async function countStepsForVersion(tutorial_version_id: string) {
     return count ?? 0
 }
 
-type TutorialLibraryStatus = "draft" | "published";
+type TutorialLibraryStatus = "draft" | "published" | "archived";
 
 export async function getTutorialLibrary(params?: {search?: string; status?: TutorialLibraryStatus;}) {
     const search = params?.search?.trim();
@@ -170,17 +199,25 @@ export async function getTutorialLibrary(params?: {search?: string; status?: Tut
 async function getLatestDraftVersion(tutorial_id: string) {
     const { data, error } = await supabase
         .from("tutorial_version")
-        .select("tutorial_version_id, version_number, status, created_at")
+        .select("tutorial_version_id, tutorial_id, version_number, status, created_at")
         .eq("tutorial_id", tutorial_id)
         .eq("status", "draft")
+        .is("deleted_at", null)
         .order("version_number", { ascending: false })
         .order("created_at", { ascending: false })
         .limit(1)
-        .maybeSingle();
+        .maybeSingle()
 
-    if (error) throw error;
-    return data; // null if none
+    if (error) throw error
+    return data // null if none
 }
+
+async function requireDraftVersion(tutorial_id: string) {
+    const draft = await getLatestDraftVersion(tutorial_id)
+    if (!draft) throw new Error("Draft not found")
+    return draft
+}
+
 
 // Find published version
 async function getPublishedVersion(tutorial_id: string) {
@@ -189,6 +226,7 @@ async function getPublishedVersion(tutorial_id: string) {
         .select("tutorial_version_id, version_number, status, created_at")
         .eq("tutorial_id", tutorial_id)
         .eq("status", "published")
+        .is("deleted_at", null)
         .limit(1)
         .maybeSingle();
 
@@ -243,49 +281,127 @@ async function copySteps(from_version_id: string, to_version_id: string) {
 
 // resolve version that is editable
 export async function resolveEditableVersion(input: { tutorial_id: string }) {
-    const tutorial_id = input.tutorial_id;
+    const tutorial_id = input.tutorial_id
 
     // 1) If latest draft exists, open it
-    const draft = await getLatestDraftVersion(tutorial_id);
+    const draft = await getLatestDraftVersion(tutorial_id)
     if (draft) {
         return {
         tutorial_id,
         tutorial_version_id: draft.tutorial_version_id,
         action: "opened_existing_draft",
-        };
+        }
     }
 
-    // 2) Otherwise, base off published
-    const published = await getPublishedVersion(tutorial_id);
-    if (!published) {
-        throw new Error("No published version found and no draft exists for this tutorial.");
-    }
+    // 2) Otherwise, check published
+    const published = await getPublishedVersion(tutorial_id)
 
     // 3) Create new draft version (v+1)
-    const nextVersion = await getNextVersionNumber(tutorial_id);
+    const nextVersion = await getNextVersionNumber(tutorial_id)
 
     const { data: newDraft, error: insertErr } = await supabase
         .from("tutorial_version")
-        .insert([
-        {
-            tutorial_id,
-            version_number: nextVersion,
-            status: "draft",
-        },
-        ])
+        .insert([{ tutorial_id, version_number: nextVersion, status: "draft" }])
         .select("tutorial_version_id, tutorial_id, version_number, status, created_at")
-        .single();
+        .single()
+    
+    if (insertErr) {
+        const anyErr = insertErr as any
+        const msg = String(anyErr?.message ?? "")
+        const details = String(anyErr?.details ?? "")
 
-    if (insertErr) throw insertErr;
+        const isUnique =
+            anyErr?.code === "23505" ||
+            msg.includes("duplicate key value") ||
+            msg.includes("ux_tutorial_one_draft") ||
+            details.includes("ux_tutorial_one_draft")
 
-    // 4) Copy steps published -> new draft
-    await copySteps(published.tutorial_version_id, newDraft.tutorial_version_id);
+        if (isUnique) {
+            const draftNow = await getLatestDraftVersion(tutorial_id)
+            if (draftNow) {
+            return {
+                tutorial_id,
+                tutorial_version_id: draftNow.tutorial_version_id,
+                action: "opened_existing_draft",
+            }
+            }
+            throw new Error("Draft already exists but could not be retrieved.")
+        }
 
-    return {
+        throw insertErr
+    }
+
+    if (!newDraft) throw new Error("Failed to create draft version")
+
+    // 4) If published exists, copy steps published -> new draft
+    if (published) {
+        await copySteps(published.tutorial_version_id, newDraft.tutorial_version_id)
+        return {
         tutorial_id,
         tutorial_version_id: newDraft.tutorial_version_id,
         action: "created_new_draft_from_published",
-    };
+        }
+    }
+
+    // 5) No published exists: empty draft is fine
+    return {
+        tutorial_id,
+        tutorial_version_id: newDraft.tutorial_version_id,
+        action: "created_new_draft_no_published",
+    }
 }
 
+export async function discardDraft(input: {
+    tutorial_id: string
+    tutorial_version_id: string
+    }) {
+    const { tutorial_id, tutorial_version_id } = input
 
+    // 1) Verify version exists and is a non-deleted draft
+    const { data: draft, error: draftErr } = await supabase
+        .from("tutorial_version")
+        .select("tutorial_version_id, status")
+        .eq("tutorial_id", tutorial_id)
+        .eq("status", "draft")
+        .is("deleted_at", null)
+        .maybeSingle()
+
+    if (draftErr) throw new Error(draftErr.message)
+    if (!draft) throw new Error("No active draft to discard")
+
+    // 2) Check if a published version exists
+    const { data: published, error: pubErr } = await supabase
+        .from("tutorial_version")
+        .select("tutorial_version_id")
+        .eq("tutorial_id", tutorial_id)
+        .eq("status", "published")
+        .is("deleted_at", null)
+        .maybeSingle()
+
+    if (pubErr) throw new Error(pubErr.message)
+
+    // 3) Soft-delete the draft version
+    const { error: delDraftErr } = await supabase
+        .from("tutorial_version")
+        .update({ deleted_at: new Date().toISOString(), status: "archived" })
+        .eq("tutorial_version_id", draft.tutorial_version_id)
+        .eq("tutorial_id", tutorial_id)
+        .is("deleted_at", null)
+
+    if (delDraftErr) throw new Error(delDraftErr.message)
+
+    // 4) If no published exists, soft-delete the tutorial too
+    if (!published) {
+        const { error: delTutErr } = await supabase
+        .from("tutorial")
+        .update({ deleted_at: new Date().toISOString() })
+        .eq("tutorial_id", tutorial_id)
+        .is("deleted_at", null)
+
+        if (delTutErr) throw new Error(delTutErr.message)
+
+        return { action: "deleted_tutorial_and_draft" as const }
+    }
+
+    return { action: "deleted_draft_only" as const }
+}

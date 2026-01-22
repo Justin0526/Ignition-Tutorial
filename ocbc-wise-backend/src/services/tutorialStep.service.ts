@@ -25,6 +25,7 @@ type TutorialStepInput = {
     target_w: number | null;
     target_h: number | null;
     is_nav_target: boolean | null;
+
 };
 
 export async function upsertTutorialStep(input: TutorialStepInput) {
@@ -173,4 +174,46 @@ export async function getTutorialStepsByVersion(tutorial_version_id: string) {
     })
 
     return rows
+}
+
+export async function syncTutorialSteps(input: {
+    tutorial_version_id: string
+    steps: Omit<TutorialStepInput, "tutorial_version_id">[]
+  }) {
+    const { tutorial_version_id, steps } = input
+
+    const { data: version, error: verErr } = await supabase
+      .from("tutorial_version")
+      .select("status, deleted_at")
+      .eq("tutorial_version_id", tutorial_version_id)
+      .single()
+
+    if (verErr) throw new Error(verErr.message)
+    if (!version || version.deleted_at) throw new Error("Version not found")
+
+    // Cast status as string to satisfy TS (since your DB uses 'draft'/'published'/'archived')
+    if (String(version.status) !== "draft") {
+      throw new Error("Cannot sync steps for non-draft version")
+    }
+
+    // 1) wipe existing
+    const { error: delErr } = await supabase
+    .from("tutorial_step")
+    .delete()
+    .eq("tutorial_version_id", tutorial_version_id)
+
+    if (delErr) throw new Error(delErr.message)
+
+    // 2) insert new
+    if (steps.length === 0) return { count: 0 }
+
+    const rows = steps.map((s) => ({
+      tutorial_version_id,
+      ...s,
+    }))
+
+    const { error: insErr } = await supabase.from("tutorial_step").insert(rows)
+    if (insErr) throw new Error(insErr.message)
+
+    return { count: steps.length }
 }

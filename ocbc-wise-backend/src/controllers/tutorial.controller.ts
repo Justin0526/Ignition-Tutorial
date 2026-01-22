@@ -87,7 +87,26 @@ export async function resolveEditHandler(req: Request, res: Response) {
         const result = await svc.resolveEditableVersion({ tutorial_id: tutorialId });
 
         return res.status(200).json(result);
-    } catch (err: any) {
-        return res.status(500).json({ error: err.message ?? "Server error" });
+    }  catch (err: any) {
+        return res.status(500).json({
+            error: err?.message ?? "Server error",
+            code: err?.code,
+            details: err?.details,
+        })
+    }
+}
+
+export async function discardDraftHandler(req: Request, res: Response) {
+    try {
+        const tutorial_id = req.params.tutorialId
+        const { tutorial_version_id } = req.body as { tutorial_version_id: string }
+
+        if (!tutorial_version_id) return res.status(400).json({ error: "tutorial_version_id required" })
+
+        const result = await svc.discardDraft({ tutorial_id, tutorial_version_id })
+        return res.status(200).json(result)
+    } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : "Server error"
+        return res.status(500).json({ error: msg })
     }
 }

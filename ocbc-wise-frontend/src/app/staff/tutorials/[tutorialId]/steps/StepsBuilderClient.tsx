@@ -9,6 +9,8 @@ import type { NavBarAsset } from "@/lib/api/screenAssets"
 import { getNavBarAssets } from "@/lib/api/screenAssets"
 import { upsertTutorialStep } from "@/lib/api/tutorialSteps"
 import { getTutorialSteps } from "@/lib/api/tutorialSteps"
+import { syncTutorialSteps } from "@/lib/api/tutorialSteps"
+import { discardDraft } from "@/lib/api/tutorial"
 import { useRouter } from "next/navigation"
 
 type StepTarget = {
@@ -91,6 +93,8 @@ export default function StepsBuilderClient() {
   const activeStep = steps[activeIndex] ?? null
   const activeTarget = activeStep?.target ?? null
   const allStepsSaved = steps.length > 0 && steps.every((s) => s.isSaved === true)
+  const activeStepId = steps[activeIndex]?.id
+
 
   // ✅ Control preview scrolling ONLY via Action Type slider.
   // - direct_tap: lock preview at top (no scrolling)
@@ -148,13 +152,21 @@ export default function StepsBuilderClient() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [actionType, activeIndex])
 
-  useEffect(() => {
+ useEffect(() => {
     if (!hasSteps) return
     const step = steps[activeIndex]
     if (!step) return
     loadStepToForm(step)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeIndex])
+
+  useEffect(() => {
+    if (!hasSteps) return
+    const step = steps[activeIndex]
+    if (!step) return
+    loadStepToForm(step)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeIndex, activeStepId])
 
   useEffect(() => {
     if (!tutorialVersionId) return
@@ -325,10 +337,6 @@ export default function StepsBuilderClient() {
     setSelectedNavKey(step.draft.nav_key ?? "")
     setSelectedScreen(step.draft.screen ?? null)
 
-    // restore target overlay too
-    setSteps((prev) =>
-      prev.map((s) => (s.id === step.id ? { ...s, target: step.target ?? null } : s))
-    )
   }
 
   async function handleSaveStep() {
@@ -364,6 +372,7 @@ export default function StepsBuilderClient() {
 
     const target = isNoTap ? null : activeTarget
 
+    persistActiveFormToStep()
     const payload = {
       screen_asset_id: selectedScreen.screen_asset_id,
       nav_key: selectedNavKey,
@@ -415,6 +424,226 @@ export default function StepsBuilderClient() {
         }
   }
 
+  function snapshotStepsWithActiveForm(): Step[] {
+    return steps.map((s, idx) =>
+      idx === activeIndex
+        ? {
+            ...s,
+            title: instruction.trim() ? instruction.trim() : s.title,
+            target: activeTarget ?? s.target ?? null,
+            draft: {
+              instruction,
+              tip,
+              actionType,
+              scrollProgress,
+              nav_key: selectedNavKey,
+              screen: selectedScreen,
+            },
+          }
+        : s
+    )
+  }
+
+ async function handleDeleteStep(stepId: string) {
+    if (saving) return
+    const ok = window.confirm("Delete this step?")
+    if (!ok) return
+
+    const base = snapshotStepsWithActiveForm()
+    const delIndex = base.findIndex((s) => s.id === stepId)
+    if (delIndex === -1) return
+
+    const nextSteps = base.filter((s) => s.id !== stepId)
+
+    // update UI first
+    setSteps(nextSteps.map((s) => ({ ...s, isSaved: false })))
+    setActiveIndex((curr) => {
+      if (nextSteps.length === 0) return 0
+      if (delIndex < curr) return curr - 1
+      if (delIndex === curr) return Math.min(curr, nextSteps.length - 1)
+      return curr
+    })
+
+    // sync to DB so refresh won't bring it back
+    if (!tutorialVersionId) return
+    try {
+      setSaving(true)
+
+      for (let i = 0; i < nextSteps.length; i++) {
+        if (!nextSteps[i].draft.screen) {
+          setSaveError(`Step ${i + 1}: missing screen. Save failed.`)
+          return
+        }
+      }
+
+      const payloadSteps = nextSteps.map((s, idx) => {
+        const isNoTap = s.draft.actionType === "no_tap"
+        const target = isNoTap ? null : (s.target ?? null)
+
+        return {
+          step_index: idx + 1, // 1-based
+          screen_asset_id: s.draft.screen!.screen_asset_id,
+          nav_key: s.draft.nav_key,
+          instruction: s.draft.instruction.trim(),
+          tip: s.draft.tip.trim() ? s.draft.tip.trim() : null,
+          scroll_progress: s.draft.actionType === "scroll_then_tap" ? s.draft.scrollProgress : 0,
+          target_x: target ? target.x : null,
+          target_y: target ? target.y : null,
+          target_w: target ? target.w : null,
+          target_h: target ? target.h : null,
+          is_nav_target: target ? target.isNav : null,
+        }
+      })
+
+      await syncTutorialSteps({ tutorial_version_id: tutorialVersionId, steps: payloadSteps })
+
+      const { steps: rows } = await getTutorialSteps(tutorialVersionId)
+      const hydrated: Step[] = rows.map((r) => {
+          const hasTarget =
+            r.target_x != null &&
+            r.target_y != null &&
+            r.target_w != null &&
+            r.target_h != null
+
+          const actionType: ActionType = !hasTarget
+            ? "no_tap"
+            : r.scroll_progress > 0
+              ? "scroll_then_tap"
+              : "direct_tap"
+
+          const screen: ScreenAsset | null =
+            r.screen_public_url && r.screen_name
+              ? ({
+                  screen_asset_id: r.screen_asset_id,
+                  name: r.screen_name,
+                  public_url: r.screen_public_url,
+                } as ScreenAsset)
+              : null
+
+          return {
+            id: r.tutorial_step_id,
+            title: r.instruction?.trim() ? r.instruction.trim() : "(Untitled Step)",
+            isSaved: true,
+            target: hasTarget
+              ? {
+                  x: r.target_x!,
+                  y: r.target_y!,
+                  w: r.target_w!,
+                  h: r.target_h!,
+                  isNav: r.is_nav_target ?? false,
+                }
+              : null,
+            draft: {
+              instruction: r.instruction ?? "",
+              tip: r.tip ?? "",
+              actionType,
+              scrollProgress: r.scroll_progress ?? 0,
+              nav_key: r.nav_key ?? "",
+              screen,
+            },
+          }
+        })
+
+        setSteps(hydrated)
+        setActiveIndex(0)
+
+        // load first step into the form
+        if (hydrated[0]) loadStepToForm(hydrated[0])
+    } catch (e: unknown) {
+        setSaveError(e instanceof Error ? e.message : "Failed to delete step.  ")
+    }finally {
+      setSaving(false)
+    }
+  }
+
+  async function saveDraftSync(): Promise<void> {
+    setSaveError(null)
+
+    if (!tutorialVersionId) {
+      setSaveError("Missing tutorial version id in URL (?version=...).")
+      throw new Error("Missing tutorial version id")
+    }
+
+    // Snapshot that includes current active form values
+    const nextSteps = snapshotStepsWithActiveForm()
+
+    // Validate
+    for (let i = 0; i < nextSteps.length; i++) {
+      const s = nextSteps[i]
+      if (!s.draft.screen) {
+        setSaveError(`Step ${i + 1}: Select a screen first.`)
+        throw new Error("Validation failed")
+      }
+      if (!s.draft.nav_key) {
+        setSaveError(`Step ${i + 1}: Select a navigation bar first.`)
+        throw new Error("Validation failed")
+      }
+      if (!s.draft.instruction.trim()) {
+        setSaveError(`Step ${i + 1}: Step instruction is required.`)
+        throw new Error("Validation failed")
+      }
+      if (s.draft.actionType !== "no_tap" && !s.target) {
+        setSaveError(`Step ${i + 1}: Place a tap target first (or set to "no_tap").`)
+        throw new Error("Validation failed")
+      }
+    }
+
+    const payloadSteps = nextSteps.map((s, idx) => {
+      const isNoTap = s.draft.actionType === "no_tap"
+      const target = isNoTap ? null : (s.target ?? null)
+
+      return {
+        step_index: idx + 1, // ✅ 1-based, matches your handleSaveStep()
+        screen_asset_id: s.draft.screen!.screen_asset_id,
+        nav_key: s.draft.nav_key,
+        instruction: s.draft.instruction.trim(),
+        tip: s.draft.tip.trim() ? s.draft.tip.trim() : null,
+        scroll_progress: s.draft.actionType === "scroll_then_tap" ? s.draft.scrollProgress : 0,
+        target_x: target ? target.x : null,
+        target_y: target ? target.y : null,
+        target_w: target ? target.w : null,
+        target_h: target ? target.h : null,
+        is_nav_target: target ? target.isNav : null,
+      }
+    })
+
+    setSaving(true)
+   try {
+      await syncTutorialSteps({ tutorial_version_id: tutorialVersionId, steps: payloadSteps })
+      setSteps((prev) => prev.map((s) => ({ ...s, isSaved: true })))
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : "Failed to sync after delete."
+      setSaveError(msg)
+      // Optional: you can refetch steps from backend to restore truth
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  async function handleContinue() {
+    try {
+      await saveDraftSync()
+      router.push(`/staff/tutorials/${tutorialId}/preview?version=${tutorialVersionId}`)
+    } catch {
+      // saveDraftSync already sets saveError
+    }
+  }
+
+  async function handleDiscard() {
+    const ok = window.confirm("Discard this draft? This cannot be undone.")
+    if (!ok) return
+
+    try {
+      setSaving(true)
+      await discardDraft({ tutorial_id: tutorialId, tutorial_version_id: tutorialVersionId })
+      router.push("/staff/tutorials/library") // adjust to your actual library route
+    } catch (e: unknown) {
+      alert(e instanceof Error ? e.message : "Failed to discard draft.")
+    } finally {
+      setSaving(false)
+    }
+  }
+
   return (
     <div className="w-full flex justify-center">
       <div className="w-full max-w-6xl">
@@ -439,33 +668,58 @@ export default function StepsBuilderClient() {
                         <div className="mt-5 space-y-3">
                           {steps.map((s, idx) => {
                             const isActive = idx === activeIndex
+
                             return (
-                              <button
-                                key={s.id}
-                                type="button"
-                                onClick={() => {
-                                  persistActiveFormToStep()
-                                  setActiveIndex(idx)
-                                }}
-                                className={[
-                                  "w-full rounded-2xl px-4 py-4 text-left transition",
-                                  isActive
-                                    ? "bg-red-500 text-white"
-                                    : "bg-white border border-slate-200 text-slate-800 hover:bg-slate-50",
-                                ].join(" ")}
-                              >
-                                <div
+                              <div key={s.id} className="relative group">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    persistActiveFormToStep()
+                                    setActiveIndex(idx)
+                                  }}
                                   className={[
-                                    "text-[10px] font-extrabold tracking-widest",
-                                    isActive ? "text-white/90" : "text-slate-500",
+                                    "group w-full rounded-2xl px-4 py-4 text-left transition relative",
+                                    isActive
+                                      ? "bg-red-500 text-white"
+                                      : "bg-white border border-slate-200 text-slate-800 hover:bg-slate-50",
                                   ].join(" ")}
                                 >
-                                  STEP {idx + 1}
-                                </div>
-                                <div className="mt-1 text-[10px] font-extrabold tracking-widest opacity-80">
-                                  {s.isSaved ? "SAVED" : "UNSAVED"}
-                                </div>
-                              </button>
+                                  <div
+                                    className={[
+                                      "text-[10px] font-extrabold tracking-widest",
+                                      isActive ? "text-white/90" : "text-slate-500",
+                                    ].join(" ")}
+                                  >
+                                    STEP {idx + 1}
+                                  </div>
+
+                                  <div className="mt-1 text-[10px] font-extrabold tracking-widest opacity-80">
+                                    {s.isSaved ? "SAVED" : "UNSAVED"}
+                                  </div>
+                                </button>
+
+                                {/* Delete icon (top-right). Visible on hover OR when active */}
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.preventDefault()
+                                    e.stopPropagation()
+                                    handleDeleteStep(s.id)
+                                  }}
+                                  className={[
+                                    "absolute top-2 right-2 h-7 w-7 rounded-full grid place-items-center transition",
+                                    isActive
+                                      ? "bg-white/20 text-white hover:bg-white/30"
+                                      : "bg-slate-100 text-slate-500 hover:bg-red-50 hover:text-red-600",
+                                    // hide by default; show on hover for non-active
+                                    isActive ? "opacity-100" : "opacity-0 group-hover:opacity-100",
+                                  ].join(" ")}
+                                  title="Delete step"
+                                  aria-label={`Delete step ${idx + 1}`}
+                                >
+                                  ✕
+                                </button>
+                              </div>
                             )
                           })}
 
@@ -804,7 +1058,7 @@ export default function StepsBuilderClient() {
                     <button
                       type="button"
                       className="rounded-xl border border-slate-200 px-6 py-3 text-sm font-semibold text-slate-700 hover:bg-slate-50"
-                      onClick={() => alert("Discard (hook later)")}
+                      onClick={handleDiscard}
                     >
                       Discard
                     </button>
@@ -812,7 +1066,7 @@ export default function StepsBuilderClient() {
                     <button
                       type="button"
                       disabled={!allStepsSaved}
-                      onClick={() => { router.push(`/staff/tutorials/${tutorialId}/preview?version=${tutorialVersionId}`)}}
+                      onClick={handleContinue}
                       className="rounded-xl bg-red-500 px-7 py-3 text-sm font-semibold text-white hover:bg-red-600 disabled:opacity-50 hover:cursor-pointer"
                     >
                       Continue
