@@ -1,5 +1,5 @@
 const BASE = process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/$/, "") || "http://localhost:5001"
-
+import { fetchjson } from "./fetchJson"
 class ApiError extends Error {
     status: number
     body: unknown
@@ -22,7 +22,6 @@ export async function fetchJSON<T>(path: string, options?: RequestInit): Promise
     return body as T
 }
 
-
 // Create tutorial + draft v1
 export type Tutorial = {
     tutorial_id: string
@@ -40,13 +39,23 @@ export type TutorialVersion = {
     created_at: string
 }
 
-export async function createTutorialDraft(input: { name: string, enquiry_category_id: string, estimated_time_sec?: number}):
-    Promise<{ tutorial: Tutorial; draft_version: TutorialVersion }> {
-        return fetchJSON("/staff/tutorials/drafts", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(input),
-        })
+export async function createTutorialDraft(input: {
+    name: string
+    enquiry_category_id: string
+    estimated_time_sec?: number
+    }): Promise<{ tutorial: Tutorial; draft_version: TutorialVersion }> {
+    const payload = {
+        ...input,
+        estimated_time_sec: input.estimated_time_sec ?? null,
+    }
+
+    console.log("Create tutorial draft");
+
+    return fetchjson(`${BASE}/staff/tutorials/drafts`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+    })
 }
 
 export type EnquiryCategory = {

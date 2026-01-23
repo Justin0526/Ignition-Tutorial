@@ -3,14 +3,14 @@ import { supabase } from "../lib/supabase.js"
 export type CreateTutorialDraftInput = {
     name: string,
     enquiry_category_id: string
-    estimated_time_sec: number
+    estimated_time_sec: number | null 
 }
 
 type TutorialRow = {
     tutorial_id: string;
     name: string;
     enquiry_category_id: string;
-    estimated_time_sec: number;
+    estimated_time_sec: number | null;
     created_at: string; 
 };
 

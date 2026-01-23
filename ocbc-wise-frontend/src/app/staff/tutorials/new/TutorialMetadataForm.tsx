@@ -45,7 +45,6 @@ export default function TutorialMetadataForm({
   const [formError, setFormError] = useState<string | null>(null)
   const [showDupModal, setShowDupModal] = useState(false)
 
-
   const isEdit = mode === "edit"
   const shouldLockCategory = lockCategory ?? isEdit
 
@@ -121,10 +120,17 @@ export default function TutorialMetadataForm({
     const estimated_time_sec =
       mins === undefined || Number.isNaN(mins) ? undefined : Math.round(mins * 60)
 
-    const payload = {
+    const payload: {
+      name: string
+      enquiry_category_id: string
+      estimated_time_sec?: number
+    } = {
       name: name.trim(),
       enquiry_category_id: selectedLeafId,
-      estimated_time_sec,
+    }
+
+    if (estimated_time_sec !== undefined) {
+      payload.estimated_time_sec = estimated_time_sec
     }
 
     setFormError(null)

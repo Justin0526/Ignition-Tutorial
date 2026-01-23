@@ -10,35 +10,64 @@ function isForeignKeyViolation(err: any): boolean {
     return err?.code === "23503";
 }
 
-export async function createTutorialDraftHandler(req: Request, res: Response){
-    try{
-        const { name, enquiry_category_id, estimated_time_sec } = req.body;
+export async function createTutorialDraftHandler(req: Request, res: Response) {
+    console.log("HIT createTutorialDraftHandler /staff/tutorials/new", req.body)
+    try {
+        const raw = Array.isArray(req.body) ? req.body[0] : req.body
 
-        const result = await svc.createTutorialDraft({ name, enquiry_category_id, estimated_time_sec })
+        const name: unknown = raw?.name
+        const enquiry_category_id: unknown = raw?.enquiry_category_id
+        const estimated_raw: unknown = raw?.estimated_time_sec
 
-        return res.status(201).json(result);
-    } catch (err: any){
-        if (err?.code === "TUTORIAL_EXISTS") {
+        if (typeof name !== "string" || name.trim() === "") {
+        return res.status(400).json({ error: "Missing or invalid name" })
+        }
+        if (typeof enquiry_category_id !== "string" || enquiry_category_id.trim() === "") {
+        return res.status(400).json({ error: "Missing or invalid enquiry_category_id" })
+        }
+
+        // normalize estimated_time_sec to number | null
+        let estimated_time_sec: number | null = null
+        if (estimated_raw !== undefined && estimated_raw !== null && estimated_raw !== "$undefined") {
+        const n = Number(estimated_raw)
+        if (!Number.isFinite(n)) {
+            return res.status(400).json({ error: "estimated_time_sec must be a valid number" })
+        }
+        estimated_time_sec = n
+        }
+
+        const categoryId = enquiry_category_id.trim()
+
+        const result = await svc.createTutorialDraft({
+            name: name.trim(),
+            enquiry_category_id: categoryId,
+            estimated_time_sec,
+        })
+
+        return res.status(201).json(result)
+    } catch (err: unknown) {
+        console.error("createTutorialDraftHandler error:", err)
+        if (
+            typeof err === "object" &&
+            err !== null &&
+            "code" in err &&
+            (err as Record<string, unknown>).code === "TUTORIAL_EXISTS"
+        ) {
+            const e = err as { message?: string; tutorial_id?: unknown }
             return res.status(409).json({
-            error: err.message,
+            error: e.message ?? "Tutorial already exists for this category.",
             code: "TUTORIAL_EXISTS",
-            tutorial_id: err.tutorial_id,
+            tutorial_id: typeof e.tutorial_id === "string" ? e.tutorial_id : null,
             })
         }
-        
-        // duplicate tutorial name in same category
-        if (isPostgresUniqueViolation(err)){
-            return res.status(409).json({ error: "A tutorial with the same name already exists in this category."});
-        }
 
-        // Invalid category_id
-        if (isForeignKeyViolation(err)){
-            return res.status(400).json({ error: "Category not found"});
-        }
-
-        return res.status(500).json({ error: err?.message ?? "Server error" });
+        // keep your other mappings if you want (unique violation, FK violation)
+        return res.status(500).json({
+            error: err instanceof Error ? err.message : "Server error",
+        })
     }
 }
+
 export async function publishTutorial(req: Request, res: Response) {
     try {
         const { tutorial_version_id, tutorial_id } = req.body
